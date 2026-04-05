@@ -1,0 +1,9 @@
+{
+  "name": "claude-star-office-bridge",
+  "version": "0.1.0",
+  "description": "Draft plugin that forwards Claude hook events to a local Star Office bridge service",
+  "author": {
+    "name": "Karl Chow Lab",
+    "email": "local-only@example.invalid"
+  }
+}
