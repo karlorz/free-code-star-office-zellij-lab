@@ -29,7 +29,7 @@ Deliverables:
 
 - local plugin draft
 - hook handler forwarding raw payloads into the bridge
-- event log showing actual payload shapes
+- event log showing actual payload shapes with one stable mapped/ignored artifact contract
 
 Success condition:
 
@@ -80,6 +80,8 @@ The runtime does not expose the needed hooks. In that case this repo still remai
 ## Immediate Next Steps
 
 1. Run the bridge in dry-run mode.
-2. Observe real hook payloads from the target runtime.
-3. Turn off dry-run for a local Star Office UI instance.
-4. Validate the Zellij flow with a named session and local web server.
+2. Observe real hook payloads from the target runtime (inspect `tmp/events.ndjson`, including `rawEvent`).
+3. Keep `scripts/run-live-capture.sh` as the non-interactive lifecycle capture path.
+4. Use `scripts/run-interactive-notification-capture.sh` for the first pane-backed interactive notification validation pass.
+5. Switch from dry-run to live Star Office endpoint and re-verify state transitions.
+6. Validate the Zellij flow with a named session and local web server.

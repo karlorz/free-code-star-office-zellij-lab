@@ -14,11 +14,30 @@
 - `hooks/hooks.json`
   Hook registration for:
   - `SessionStart`
+  - `SessionEnd`
+  - `Setup`
+  - `Notification`
+  - `UserPromptSubmit`
   - `PreToolUse`
   - `PostToolUse`
+  - `PostToolUseFailure`
+  - `PermissionRequest`
+  - `PermissionDenied`
+  - `Elicitation`
+  - `ElicitationResult`
+  - `TaskCreated`
+  - `TaskCompleted`
   - `Stop`
+  - `StopFailure`
   - `SubagentStart`
   - `SubagentStop`
+  - `TeammateIdle`
+  - `ConfigChange`
+  - `InstructionsLoaded`
+  - `CwdChanged`
+  - `FileChanged`
+  - `PreCompact`
+  - `PostCompact`
 
 - `hooks-handlers/send-hook.sh`
   Reads hook payload JSON from stdin and posts it to the local bridge.

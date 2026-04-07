@@ -18,7 +18,45 @@ export interface ClaudeBridgeEvent {
 export interface SignalContext {
   cwd?: string;
   transcriptPath?: string;
+  agentTranscriptPath?: string;
   rawToolName?: string;
+  agentId?: string;
+  agentType?: string;
+  taskId?: string;
+  taskStatus?: string;
+  taskSummary?: string;
+  outputFilePath?: string;
+  worktreePath?: string;
+  worktreeBranch?: string;
+  teamName?: string;
+  teammateName?: string;
+  teammateSummary?: string;
+  parentSessionId?: string;
+  notificationType?: string;
+  notificationTitle?: string;
+  notificationMessage?: string;
+  notificationWorkerName?: string;
+  notificationToolName?: string;
+  notificationHost?: string;
+  controlPlaneType?: string;
+  controlPlaneSubtype?: string;
+  controlPlaneRequestId?: string;
+  controlPlaneSender?: string;
+  controlPlaneAgentId?: string;
+  controlPlaneToolName?: string;
+  controlPlaneToolUseId?: string;
+  controlPlaneDescription?: string;
+  controlPlaneApproved?: boolean;
+  controlPlaneAllow?: boolean;
+  controlPlaneReason?: string;
+  controlPlaneFeedback?: string;
+  controlPlaneError?: string;
+  controlPlaneHost?: string;
+  controlPlanePlanFilePath?: string;
+  controlPlaneTimestamp?: string;
+  controlPlanePermissionUpdatesCount?: number;
+  permissionSuggestionsCount?: number;
+  stopHookActive?: boolean;
 }
 
 export interface NormalizedSignal {
@@ -41,11 +79,30 @@ export interface SessionSnapshot {
   agents: Record<string, NormalizedSignal>;
 }
 
+export interface BridgeErrorInfo {
+  message: string;
+  stack?: string;
+}
+
+export interface BridgeEventLogEntry {
+  source: string;
+  receivedAt: string;
+  rawEvent: unknown | null;
+  signal: NormalizedSignal | null;
+  originalSignal: NormalizedSignal | null;
+  starOfficeResult: unknown | null;
+  starOfficeError: BridgeErrorInfo | null;
+  ignored: boolean;
+  ignoreReason: string | null;
+  rawBody?: string;
+}
+
 export interface BridgeConfig {
   host: string;
   port: number;
   secret?: string;
   dryRun: boolean;
+  eventsLogPath: string;
   starOfficeUrl?: string;
   starOfficeJoinKey?: string;
   mainAgentName: string;
