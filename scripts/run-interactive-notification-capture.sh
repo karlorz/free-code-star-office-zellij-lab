@@ -11,6 +11,9 @@ BRIDGE_PORT="${BRIDGE_PORT:-4317}"
 BRIDGE_DRY_RUN="${BRIDGE_DRY_RUN:-true}"
 MAX_BRIDGE_PORT_ATTEMPTS="${MAX_BRIDGE_PORT_ATTEMPTS:-8}"
 PERMISSION_MODE="${PERMISSION_MODE:-default}"
+ZELLIJ_WEB_URL="${ZELLIJ_WEB_URL:-https://term.karldigi.dev/main}"
+ZELLIJ_SESSION_NAME="${ZELLIJ_SESSION_NAME:-}"
+ZELLIJ_WEB_TOKEN="${ZELLIJ_WEB_TOKEN:-}"
 BRIDGE_URL="http://${BRIDGE_HOST}:${BRIDGE_PORT}"
 EVENTS_LOG="${REPO_ROOT}/tmp/events.ndjson"
 BRIDGE_LOG="${REPO_ROOT}/tmp/live-bridge.log"
@@ -42,6 +45,9 @@ Environment overrides:
   CLAUDE_STAR_BRIDGE_SECRET Optional shared secret forwarded to the plugin hook handler
   CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS Default: 1
   LEADER_PROMPT        Optional prompt text to paste into the interactive leader session
+  ZELLIJ_WEB_URL       Default: https://term.karldigi.dev/main
+  ZELLIJ_SESSION_NAME  Optional expected session name in sg01 Zellij web
+  ZELLIJ_WEB_TOKEN     Optional operator token; only set/unset status is printed
 EOF
 }
 
@@ -172,12 +178,31 @@ runtime_env=(
   "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=${CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS:-1}"
 )
 
+zellij_token_status="unset"
+if [[ -n "${ZELLIJ_WEB_TOKEN}" ]]; then
+  zellij_token_status="set (redacted)"
+fi
+
+zellij_session_label="not specified"
+if [[ -n "${ZELLIJ_SESSION_NAME}" ]]; then
+  zellij_session_label="${ZELLIJ_SESSION_NAME}"
+fi
+
 echo "[interactive-capture] bridge: ${BRIDGE_URL}"
 echo "[interactive-capture] plugin: ${PLUGIN_DIR}"
 echo "[interactive-capture] events: ${EVENTS_LOG}"
 echo "[interactive-capture] bridge log: ${BRIDGE_LOG}"
 echo "[interactive-capture] free-code args: ${runtime_args[*]}"
-echo "[interactive-capture] reminder: run this in a pane-capable interactive terminal and create the team from the leader session rather than using -p/--print."
+echo "[interactive-capture] sg01 Zellij web: ${ZELLIJ_WEB_URL}"
+echo "[interactive-capture] sg01 Zellij session: ${zellij_session_label}"
+echo "[interactive-capture] sg01 Zellij web token: ${zellij_token_status}"
+echo "[interactive-capture] operator checklist:"
+echo "  1. Open the sg01 Zellij web URL above."
+echo "  2. Provide the Zellij web token in the browser/operator flow when prompted; do not paste it into this repo."
+echo "  3. Attach to the expected session if one is configured."
+echo "  4. Use the interactive leader session launched by this script."
+echo "  5. Create the team from the leader session, not from -p/--print mode."
+echo "  6. Trigger the worker permission probe: touch worker-permission-probe.txt."
 echo "[interactive-capture] recommended leader prompt:"
 printf '%s\n' "${LEADER_PROMPT}"
 
@@ -186,3 +211,14 @@ printf '%s\n' "${LEADER_PROMPT}"
   env "${runtime_env[@]}" \
     bun run "${FREE_CODE_ENTRYPOINT}" "${plugin_args[@]}" "${runtime_args[@]}"
 )
+
+cat <<EOF
+[interactive-capture] capture finished
+[interactive-capture] review artifact: ${EVENTS_LOG}
+[interactive-capture] success patterns to inspect:
+  - Notification events for leader-side worker permission prompts
+  - permission_request or PermissionRequest control-plane payloads
+  - TaskCreated events that identify worker ownership
+  - TaskCompleted or SubagentStop events that cleanly remove workers
+[interactive-capture] bridge log: ${BRIDGE_LOG}
+EOF
