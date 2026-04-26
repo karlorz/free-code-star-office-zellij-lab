@@ -6,7 +6,7 @@ and posts observed events to the Star Office Bridge.
 ## How It Works
 
 - Subscribes to `PaneUpdate` and `TabUpdate` events
-- On each change, POSTs a native HTTP hook payload to `http://127.0.0.1:4317/hook/claude`
+- On each change, POSTs a native HTTP hook payload to `http://127.0.0.1:4317/hook/zellij`
 - Uses `FileChanged` and `CwdChanged` hook event names as transport (bridge normalizes them)
 - Supports manual state push via `zellij pipe --name push_state`
 
@@ -44,7 +44,7 @@ User is prompted once per plugin URL; grant is cached.
 
 ## Bridge Integration
 
-The plugin posts events in the bridge's native HTTP hook format:
+The plugin posts events in the bridge's Zellij hook format:
 
 ```json
 {
@@ -57,4 +57,6 @@ The plugin posts events in the bridge's native HTTP hook format:
 }
 ```
 
-The bridge normalizes `hook_event_name` into `event_name` + `payload` envelope automatically.
+The bridge `/hook/zellij` endpoint preserves Zellij-specific metadata
+(zellijEvent, zellijPaneCount, zellijTabCount, zellijFocusedTitles,
+zellijActiveTab) in the normalized signal context.

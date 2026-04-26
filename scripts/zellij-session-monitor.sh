@@ -8,7 +8,7 @@
 set -euo pipefail
 
 BRIDGE_URL="${BRIDGE_URL:-http://127.0.0.1:4317}"
-HOOK_PATH="${HOOK_PATH:-/hook/claude}"
+HOOK_PATH="${HOOK_PATH:-/hook/zellij}"
 POLL_INTERVAL="${POLL_INTERVAL:-2}"
 SESSION_NAME="${ZELLIJ_SESSION_NAME:-}"
 

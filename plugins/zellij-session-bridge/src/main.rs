@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 use zellij_tile::prelude::*;
 
-const HOOK_URL: &str = "http://127.0.0.1:4317/hook/claude";
+const HOOK_URL: &str = "http://127.0.0.1:4317/hook/zellij";
 
 /// A Zellij WASM plugin that monitors session state (panes, tabs) and
 /// posts observed changes to the Star Office Bridge via native HTTP hooks.
