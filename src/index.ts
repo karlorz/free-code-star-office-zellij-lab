@@ -1,4 +1,4 @@
-import { mkdir, appendFile, readFile } from "node:fs/promises";
+import { mkdir, appendFile, readFile, stat, unlink } from "node:fs/promises";
 import { dirname } from "node:path";
 import { loadConfig, timingSafeCompare } from "./config";
 import { SessionRegistry } from "./sessionRegistry";
@@ -141,9 +141,21 @@ function formatError(error: unknown): BridgeErrorInfo {
   };
 }
 
+const EVENTS_LOG_MAX_BYTES = 10 * 1024 * 1024; // 10MB max for events.ndjson
+
 async function appendEvent(entry: BridgeEventLogEntry): Promise<void> {
   try {
     await mkdir(dirname(config.eventsLogPath), { recursive: true });
+    // Rotate log if it exceeds max size
+    try {
+      const fileStat = await stat(config.eventsLogPath);
+      if (fileStat.size > EVENTS_LOG_MAX_BYTES) {
+        console.log(`[bridge] rotating events log (${(fileStat.size / 1024 / 1024).toFixed(1)}MB exceeds ${EVENTS_LOG_MAX_BYTES / 1024 / 1024}MB limit)`);
+        await unlink(config.eventsLogPath);
+      }
+    } catch {
+      // File doesn't exist yet — no rotation needed
+    }
     await appendFile(config.eventsLogPath, `${JSON.stringify(entry)}\n`, "utf8");
   } catch (error) {
     console.warn("[bridge] failed to append event", formatError(error));
