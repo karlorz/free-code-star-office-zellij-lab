@@ -529,6 +529,10 @@ const server = Bun.serve({
           state = "executing";
           detail = `cwd_change: ${cwd}`;
           break;
+        case "command_change":
+          state = "executing";
+          detail = `command_change: ${typeof body.terminal_command === "string" ? body.terminal_command : "?"}`;
+          break;
         case "pane_exit":
           state = "idle";
           detail = `pane_exit: exit=${body.exit_status ?? "?"} held=${body.is_held ?? "?"}`;
