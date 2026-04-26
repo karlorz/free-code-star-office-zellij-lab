@@ -347,6 +347,17 @@ async function handleRequest(request: Request, url: URL): Promise<Response> {
       return new Response("ok", { status: 200, headers: { "content-type": "text/plain", ...CORS_HEADERS } });
     }
 
+    if (request.method === "GET" && url.pathname === "/version") {
+      return json({
+        ok: true,
+        version: "0.9.0",
+        runtime: `bun ${Bun.version}`,
+        arch: process.arch,
+        platform: process.platform,
+        uptime: process.uptime(),
+      });
+    }
+
     if (request.method === "GET" && url.pathname === "/snapshot") {
       return json({
         ok: true,
