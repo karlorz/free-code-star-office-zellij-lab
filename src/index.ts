@@ -633,6 +633,7 @@ body{font-family:monospace;margin:0;background:#1a1a2e;color:#e0e0e0;display:fle
 <a href="/snapshot">snapshot</a>
 <a href="/stats">stats</a>
 <a href="/help">help</a>
+<a href="/web/tokens">tokens</a>
 ${attachUrl ? `<a href="${attachUrl}" target="_blank">zellij web</a>` : ""}
 <span class="ws-indicator ws-off" id="wsBadge">WS</span>
 <button onclick="wsToggle()">${secret ? "WS connect" : "WS connect (no auth)"}</button>
