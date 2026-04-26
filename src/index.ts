@@ -158,16 +158,32 @@ function formatError(error: unknown): BridgeErrorInfo {
 }
 
 const EVENTS_LOG_MAX_BYTES = 10 * 1024 * 1024; // 10MB max for events.ndjson
+const EVENTS_LOG_KEEP_ROTATED = 2; // Keep N rotated files for longer catch-up windows
 
 async function appendEvent(entry: BridgeEventLogEntry): Promise<void> {
   try {
     await mkdir(dirname(config.eventsLogPath), { recursive: true });
-    // Rotate log if it exceeds max size
+    // Rotate log if it exceeds max size — rename-based, not destructive
     try {
       const fileStat = await stat(config.eventsLogPath);
       if (fileStat.size > EVENTS_LOG_MAX_BYTES) {
         console.log(`[bridge] rotating events log (${(fileStat.size / 1024 / 1024).toFixed(1)}MB exceeds ${EVENTS_LOG_MAX_BYTES / 1024 / 1024}MB limit)`);
-        await unlink(config.eventsLogPath);
+        const { rename: renameFile } = await import("node:fs/promises");
+        // Remove oldest rotated file
+        for (let i = EVENTS_LOG_KEEP_ROTATED; i >= 1; i--) {
+          const rotatedPath = `${config.eventsLogPath}.${i}`;
+          const nextRotatedPath = `${config.eventsLogPath}.${i + 1}`;
+          try {
+            await stat(rotatedPath);
+            if (i === EVENTS_LOG_KEEP_ROTATED) {
+              await unlink(rotatedPath); // Delete oldest
+            } else {
+              await renameFile(rotatedPath, nextRotatedPath); // Shift up
+            }
+          } catch { /* file doesn't exist */ }
+        }
+        // Move current log to .1
+        await renameFile(config.eventsLogPath, `${config.eventsLogPath}.1`);
       }
     } catch {
       // File doesn't exist yet — no rotation needed
@@ -189,6 +205,7 @@ async function appendIgnoredEvent(
   await appendEvent({
     source,
     receivedAt: new Date().toISOString(),
+    sseEventSeq: null,
     rawEvent: options.rawEvent ?? null,
     signal: null,
     originalSignal: null,
@@ -502,6 +519,7 @@ async function processSignal(
   appendEvent({
     source,
     receivedAt: new Date().toISOString(),
+    sseEventSeq: signalId,
     rawEvent: rawEvent ?? null,
     signal: resolvedSignal,
     originalSignal: signal,
@@ -862,7 +880,7 @@ async function handleRequest(request: Request, url: URL): Promise<Response> {
                     gapStart,
                     gapEnd,
                     gapSize,
-                    suggestion: "replay unavailable — use /snapshot or /events/recent for full state",
+                    suggestion: `replay unavailable for events ${gapStart}-${gapEnd} — use /events/log?after_seq=${gapStart} for persistent log catch-up`,
                   }, "gap", ++sseEventSeq));
                 } catch {
                   sseClients.delete(clientId);
@@ -1070,7 +1088,7 @@ setInterval(()=>{fetch("/status").then(r=>r.json()).then(d=>{
     if (request.method === "GET" && url.pathname === "/help") {
       return json({
         ok: true,
-        version: "0.17.0",
+        version: "0.18.0",
         routes: ROUTE_TABLE,
       });
     }
@@ -1078,7 +1096,7 @@ setInterval(()=>{fetch("/status").then(r=>r.json()).then(d=>{
     if (request.method === "GET" && url.pathname === "/version") {
       return json({
         ok: true,
-        version: "0.17.0",
+        version: "0.18.0",
         runtime: `bun ${Bun.version}`,
         arch: process.arch,
         platform: process.platform,
@@ -1268,17 +1286,45 @@ setInterval(()=>{fetch("/status").then(r=>r.json()).then(d=>{
 
     if (request.method === "GET" && url.pathname === "/events/log") {
       const limit = Math.min(Number(url.searchParams.get("limit") || 50), 200);
+      const afterSeq = url.searchParams.get("after_seq") ? Number(url.searchParams.get("after_seq")) : undefined;
       const sourceFilter = url.searchParams.get("source") || undefined;
       const eventTypeFilter = url.searchParams.get("event_type") || undefined;
       try {
         const { readFile } = await import("node:fs/promises");
-        const content = await readFile(config.eventsLogPath, "utf8");
-        const lines = content.trim().split("\n").filter(Boolean);
-        let entries = lines.map((line) => {
-          try { return JSON.parse(line); } catch { return null; }
-        }).filter(Boolean);
+        // Read current + rotated files for comprehensive catch-up
+        const filesToRead = [config.eventsLogPath];
+        for (let i = 1; i <= EVENTS_LOG_KEEP_ROTATED; i++) {
+          try {
+            const { stat: statFile } = await import("node:fs/promises");
+            await statFile(`${config.eventsLogPath}.${i}`);
+            filesToRead.push(`${config.eventsLogPath}.${i}`);
+          } catch { /* rotated file doesn't exist */ }
+        }
+        let allEntries: Record<string, unknown>[] = [];
+        for (const filePath of filesToRead) {
+          try {
+            const content = await readFile(filePath, "utf8");
+            const lines = content.trim().split("\n").filter(Boolean);
+            for (const line of lines) {
+              try { allEntries.push(JSON.parse(line)); } catch { /* skip malformed */ }
+            }
+          } catch { /* file not found */ }
+        }
+        // Sort by sseEventSeq if available
+        allEntries.sort((a, b) => {
+          const seqA = (a.sseEventSeq as number) ?? 0;
+          const seqB = (b.sseEventSeq as number) ?? 0;
+          return seqA - seqB;
+        });
+        // Apply after_seq filter for catch-up queries
+        if (afterSeq !== undefined && !isNaN(afterSeq)) {
+          allEntries = allEntries.filter((e) => {
+            const seq = e.sseEventSeq as number | null;
+            return seq !== null && seq > afterSeq;
+          });
+        }
         if (sourceFilter || eventTypeFilter) {
-          entries = entries.filter((e: Record<string, unknown>) => {
+          allEntries = allEntries.filter((e: Record<string, unknown>) => {
             if (sourceFilter && e.source !== sourceFilter) return false;
             if (eventTypeFilter) {
               const sig = e.signal as Record<string, unknown> | null;
@@ -1291,12 +1337,11 @@ setInterval(()=>{fetch("/status").then(r=>r.json()).then(d=>{
             return true;
           });
         }
-        entries = entries.slice(-limit);
+        allEntries = allEntries.slice(-limit);
         return json({
           ok: true,
-          count: entries.length,
-          totalLines: lines.length,
-          entries,
+          count: allEntries.length,
+          entries: allEntries,
         });
       } catch (error) {
         return json({
@@ -1700,7 +1745,7 @@ setInterval(()=>{fetch("/status").then(r=>r.json()).then(d=>{
       } catch {}
       return json({
         ok: true,
-        version: "0.17.0",
+        version: "0.18.0",
         runtime: `bun ${Bun.version}`,
         arch: process.arch,
         platform: process.platform,
@@ -1899,7 +1944,7 @@ const ROUTE_TABLE: { method: string; path: string; description: string; auth: bo
   { method: "POST", path: "/hook/zellij/batch", description: "Batch Zellij events (JSON array)", auth: true },
   { method: "GET", path: "/events", description: "SSE stream for real-time subscription", auth: false },
   { method: "GET", path: "/events/recent", description: "Recent event log (sequential IDs)", auth: false },
-  { method: "GET", path: "/events/log", description: "Persistent event history from events.ndjson", auth: false },
+  { method: "GET", path: "/events/log", description: "Persistent event history (supports after_seq for catch-up, reads rotated logs)", auth: false },
   { method: "GET", path: "/events/test", description: "HTML SSE test page", auth: false },
   { method: "POST", path: "/event/manual", description: "Submit manual events", auth: true },
   { method: "POST", path: "/alert", description: "Alertmanager webhook (broadcasts alerts as SSE events)", auth: false },

@@ -113,6 +113,7 @@ export interface BridgeErrorInfo {
 export interface BridgeEventLogEntry {
   source: string;
   receivedAt: string;
+  sseEventSeq: number | null;
   rawEvent: unknown | null;
   signal: NormalizedSignal | null;
   originalSignal: NormalizedSignal | null;
