@@ -1252,7 +1252,7 @@ setInterval(()=>{fetch("/status").then(r=>r.json()).then(d=>{
     if (request.method === "GET" && url.pathname === "/help") {
       return json({
         ok: true,
-        version: "0.30.0",
+        version: versionStr,
         routes: ROUTE_TABLE,
       });
     }
@@ -1260,7 +1260,7 @@ setInterval(()=>{fetch("/status").then(r=>r.json()).then(d=>{
     if (request.method === "GET" && url.pathname === "/version") {
       return json({
         ok: true,
-        version: "0.30.0",
+        version: versionStr,
         runtime: `bun ${Bun.version}`,
         arch: process.arch,
         platform: process.platform,
@@ -2203,7 +2203,7 @@ setInterval(()=>{fetch("/status").then(r=>r.json()).then(d=>{
       } catch {}
       return json({
         ok: true,
-        version: "0.30.0",
+        version: versionStr,
         runtime: `bun ${Bun.version}`,
         arch: process.arch,
         platform: process.platform,
