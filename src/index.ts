@@ -993,6 +993,74 @@ setInterval(()=>{if(ws&&ws.readyState===1)ws.send(JSON.stringify({type:"ping"}))
       });
     }
 
+    if (request.method === "GET" && url.pathname === "/web/token/refresh") {
+      if (!isAuthorized(request)) {
+        return json({ ok: false, error: "authentication required" }, { status: 401 });
+      }
+      // Run zellij web --create-token and update the in-memory config
+      try {
+        const env = {
+          ...process.env,
+          HOME: process.env.HOME || "/root",
+          XDG_RUNTIME_DIR: process.env.XDG_RUNTIME_DIR || "/run/user/0",
+          ZELLIJ_SESSION_NAME: config.zellijSessionName || "",
+        };
+        const proc = Bun.spawn(["zellij", "web", "--create-token"], {
+          stdout: "pipe",
+          stderr: "pipe",
+          env,
+        });
+        const stdout = await new Response(proc.stdout).text();
+        const stderr = await new Response(proc.stderr).text();
+        const exitCode = await proc.exited;
+
+        if (exitCode !== 0) {
+          return json({
+            ok: false,
+            error: "zellij web --create-token failed",
+            exitCode,
+            stderr: stderr.trim() || null,
+          }, { status: 502 });
+        }
+
+        // Parse token from output like "token: <uuid>"
+        const tokenMatch = stdout.match(/token[_\s]*:?\s*([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i);
+        const newToken = tokenMatch ? tokenMatch[1] : null;
+
+        if (newToken) {
+          (config as unknown as Record<string, unknown>).zellijWebToken = newToken;
+          broadcastSSE("web_token_refreshed", { tokenSet: true, timestamp: new Date().toISOString() });
+        }
+
+        const webUrl = config.zellijWebUrl || null;
+        const sessionName = config.zellijSessionName || null;
+        let attachUrl: string | null = null;
+        if (webUrl && newToken) {
+          try {
+            const base = webUrl.replace(/\/$/, "");
+            attachUrl = sessionName
+              ? `${base.replace(/\/[^/]*$/, "")}/${sessionName}?token=${encodeURIComponent(newToken)}`
+              : `${base}?token=${encodeURIComponent(newToken)}`;
+          } catch {}
+        }
+
+        return json({
+          ok: true,
+          refreshed: !!newToken,
+          webUrl,
+          webToken: newToken,
+          sessionName,
+          attachUrl,
+          rawOutput: stdout.trim(),
+        });
+      } catch (error) {
+        return json({
+          ok: false,
+          error: error instanceof Error ? error.message : String(error),
+        }, { status: 500 });
+      }
+    }
+
     // Authenticated endpoint: returns the web token for bridge consumers
     // that need to open the Zellij web terminal programmatically
     if (request.method === "GET" && url.pathname === "/web/token") {
@@ -1182,6 +1250,7 @@ const ROUTE_TABLE: { method: string; path: string; description: string; auth: bo
   { method: "POST", path: "/action", description: "Execute Zellij CLI action (whitelisted)", auth: true },
   { method: "GET", path: "/web", description: "Zellij web config (URL, tokenSet, session)", auth: false },
   { method: "GET", path: "/web/token", description: "Zellij web token (authenticated)", auth: true },
+  { method: "GET", path: "/web/token/refresh", description: "Refresh Zellij web token via CLI (authenticated)", auth: true },
   { method: "GET", path: "/status", description: "Unified overview (health+version+web+heap)", auth: false },
   { method: "GET", path: "/snapshot", description: "Full session state for drift correction", auth: false },
   { method: "GET", path: "/sessions", description: "Active session list", auth: false },
