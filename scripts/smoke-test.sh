@@ -261,7 +261,7 @@ curl -fsS -X POST "${BRIDGE_URL}/hook/claude" \
   -H "content-type: application/json" \
   -d '{"source":"smoke","event_name":"UserPromptSubmit","payload":{"session_id":"smoke-permission-denied","prompt":"<teammate-message teammate_id=\"team-lead\" summary=\"permission denied\">\n{\"type\":\"permission_response\",\"request_id\":\"perm-2\",\"subtype\":\"error\",\"error\":\"Permission denied by lead\"}\n</teammate-message>"}}' >/dev/null
 
-echo "[20/31] teammate sandbox permission projection"
+echo "[20/32] teammate sandbox permission projection"
 curl -fsS -X POST "${BRIDGE_URL}/hook/claude" \
   -H "content-type: application/json" \
   -d '{"source":"smoke","event_name":"UserPromptSubmit","payload":{"session_id":"smoke-sandbox-request","prompt":"<teammate-message teammate_id=\"worker-mailbox\" summary=\"sandbox request\">\n{\"type\":\"sandbox_permission_request\",\"requestId\":\"sandbox-1\",\"workerId\":\"worker-mailbox\",\"workerName\":\"worker-mailbox\",\"hostPattern\":{\"host\":\"api.anthropic.com\"},\"createdAt\":1712361600000}\n</teammate-message>"}}' >/dev/null
@@ -273,13 +273,13 @@ curl -fsS -X POST "${BRIDGE_URL}/hook/claude" \
   -d '{"source":"smoke","event_name":"UserPromptSubmit","payload":{"session_id":"smoke-sandbox-denied","prompt":"<teammate-message teammate_id=\"team-lead\" summary=\"sandbox denied\">\n{\"type\":\"sandbox_permission_response\",\"requestId\":\"sandbox-2\",\"host\":\"example.com\",\"allow\":false,\"timestamp\":\"2026-04-06T00:07:00.000Z\"}\n</teammate-message>"}}' >/dev/null
 
 
-echo "[21/31] direct PermissionRequest hook projection"
+echo "[21/32] direct PermissionRequest hook projection"
 curl -fsS -X POST "${BRIDGE_URL}/hook/claude" \
   -H "content-type: application/json" \
   -d '{"source":"smoke","event_name":"PermissionRequest","payload":{"session_id":"smoke-direct-permission-request","agent_id":"worker-direct","tool_name":"Bash","tool_use_id":"toolu_direct","description":"Run pwd in repo root"}}' >/dev/null
 
 
-echo "[22/31] notification hook projection"
+echo "[22/32] notification hook projection"
 curl -fsS -X POST "${BRIDGE_URL}/hook/claude" \
   -H "content-type: application/json" \
   -d '{"source":"smoke","event_name":"Notification","payload":{"session_id":"smoke-notification-permission","notification_type":"worker_permission_prompt","title":"Worker permission needed","message":"worker-mailbox needs permission for Bash"}}' >/dev/null
@@ -288,7 +288,7 @@ curl -fsS -X POST "${BRIDGE_URL}/hook/claude" \
   -d '{"source":"smoke","event_name":"Notification","payload":{"session_id":"smoke-notification-network","notification_type":"worker_permission_prompt","title":"Worker network access needed","message":"worker-mailbox needs network access to api.anthropic.com"}}' >/dev/null
 
 
-echo "[23/31] hook invalid-json rejection"
+echo "[23/32] hook invalid-json rejection"
 invalid_json_status="$(curl -sS -o /dev/null -w '%{http_code}' -X POST "${BRIDGE_URL}/hook/claude" \
   -H "content-type: application/json" \
   --data-binary 'not-json')"
@@ -298,7 +298,7 @@ if [[ "${invalid_json_status}" != "400" ]]; then
   exit 1
 fi
 
-echo "[24/31] hook missing-event rejection"
+echo "[24/32] hook missing-event rejection"
 missing_event_status="$(curl -sS -o /dev/null -w '%{http_code}' -X POST "${BRIDGE_URL}/hook/claude" \
   -H "content-type: application/json" \
   --data-binary '{"source":"smoke","payload":{"session_id":"smoke-hook"}}')"
@@ -308,7 +308,7 @@ if [[ "${missing_event_status}" != "400" ]]; then
   exit 1
 fi
 
-echo "[25/31] session projection checks"
+echo "[25/32] session projection checks"
 sessions_json="$(curl -fsS "${BRIDGE_URL}/sessions")"
 SESSIONS_JSON="${sessions_json}" python3 - <<'PY'
 import json
@@ -806,7 +806,7 @@ if ignored_missing_name.get("signal") is not None or ignored_missing_name.get("o
     raise SystemExit("expected ignored entries to have null signal/originalSignal")
 PY
 
-echo "[26/31] native HTTP hook format (hook_event_name at top level)"
+echo "[26/32] native HTTP hook format (hook_event_name at top level)"
 native_hook_status="$(curl -sS -o /dev/null -w '%{http_code}' -X POST "${BRIDGE_URL}/hook/claude" \
   -H "content-type: application/json" \
   -d '{"hook_event_name":"PostToolUse","session_id":"smoke-native-hook","cwd":"/tmp","tool_name":"Bash","tool_input":{"command":"echo native"},"tool_use_id":"toolu_native_1","tool_response":{"exitCode":0}}')"
@@ -832,7 +832,7 @@ if context.get("rawToolName") != "Bash":
     raise SystemExit(f"expected native hook context.rawToolName=Bash, got {context.get('rawToolName')!r}")
 PY
 
-echo "[27/31] SSE /events endpoint with event replay"
+echo "[27/32] SSE /events endpoint with event replay"
 SSE_OUTPUT="$(mktemp)"
 python3 -u - "${BRIDGE_URL}" <<'PY' >"${SSE_OUTPUT}" 2>&1 &
 import http.client
@@ -902,7 +902,7 @@ if [[ "${sse_body}" != *"smoke-sse-broadcast"* ]]; then
   exit 1
 fi
 
-echo "[28/31] SSE event replay via Last-Event-ID"
+echo "[28/32] SSE event replay via Last-Event-ID"
 # Generate events, capture an event ID, then reconnect with Last-Event-ID
 SSE_REPLAY_OUT="$(mktemp)"
 python3 -u - "${BRIDGE_URL}" <<'PY' >"${SSE_REPLAY_OUT}" 2>&1 &
@@ -1016,7 +1016,7 @@ PY
   echo "SSE replay verified: client received events after Last-Event-ID"
 fi
 
-echo "[29/31] GET /events/recent endpoint"
+echo "[29/32] GET /events/recent endpoint"
 recent_json="$(curl -fsS "${BRIDGE_URL}/events/recent")"
 RECENT_JSON="${recent_json}" python3 - <<'PY'
 import json, os
@@ -1051,5 +1051,44 @@ print(f"/events/recent?after_id ok: {len(events)} events after first ID")
 PY
 fi
 
-echo "[31/31] smoke pass"
+echo "[30/32] POST /hook/zellij endpoint"
+ZELLIJ_PANE_RESULT="$(curl -fsS -X POST "${BRIDGE_URL}/hook/zellij" \
+  -H 'Content-Type: application/json' \
+  -d '{"hook_event_name":"FileChanged","session_id":"zellij-smoke","cwd":"/","zellij_event":"pane_update","total_panes":3,"focused_titles":["bash","vim"]}')"
+ZELLIJ_PANE_RESULT="${ZELLIJ_PANE_RESULT}" python3 - <<'PY'
+import json, os
+payload = json.loads(os.environ["ZELLIJ_PANE_RESULT"])
+if not payload.get("ok"):
+    raise SystemExit(f"/hook/zellij returned ok=false: {payload}")
+sig = payload.get("signal", {})
+ctx = sig.get("context", {})
+if ctx.get("zellijEvent") != "pane_update":
+    raise SystemExit(f"expected zellijEvent=pane_update, got {ctx.get('zellijEvent')}")
+if ctx.get("zellijPaneCount") != 3:
+    raise SystemExit(f"expected zellijPaneCount=3, got {ctx.get('zellijPaneCount')}")
+if ctx.get("zellijFocusedTitles") != ["bash", "vim"]:
+    raise SystemExit(f"expected focused_titles=['bash','vim'], got {ctx.get('zellijFocusedTitles')}")
+print("zellij hook ok: pane_update with 3 panes, focused_titles=['bash','vim']")
+PY
+
+ZELLIJ_TAB_RESULT="$(curl -fsS -X POST "${BRIDGE_URL}/hook/zellij" \
+  -H 'Content-Type: application/json' \
+  -d '{"hook_event_name":"CwdChanged","session_id":"zellij-smoke","cwd":"/","zellij_event":"tab_update","tab_count":2,"active_tab":"main"}')"
+ZELLIJ_TAB_RESULT="${ZELLIJ_TAB_RESULT}" python3 - <<'PY'
+import json, os
+payload = json.loads(os.environ["ZELLIJ_TAB_RESULT"])
+if not payload.get("ok"):
+    raise SystemExit(f"/hook/zellij tab_update returned ok=false: {payload}")
+sig = payload.get("signal", {})
+ctx = sig.get("context", {})
+if ctx.get("zellijEvent") != "tab_update":
+    raise SystemExit(f"expected zellijEvent=tab_update, got {ctx.get('zellijEvent')}")
+if ctx.get("zellijTabCount") != 2:
+    raise SystemExit(f"expected zellijTabCount=2, got {ctx.get('zellijTabCount')}")
+if ctx.get("zellijActiveTab") != "main":
+    raise SystemExit(f"expected zellijActiveTab=main, got {ctx.get('zellijActiveTab')}")
+print("zellij hook ok: tab_update with 2 tabs, active_tab=main")
+PY
+
+echo "[32/32] smoke pass"
 echo "smoke test passed"

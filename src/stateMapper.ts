@@ -520,6 +520,11 @@ export function normalizeClaudeEvent(event: ClaudeBridgeEvent): NormalizedSignal
         : undefined
     ),
     stopHookActive: firstBoolean(payload, ["stop_hook_active", "stopHookActive"]),
+    zellijEvent: firstString(payload, ["zellij_event"]),
+    zellijPaneCount: payload.total_panes != null ? Number(payload.total_panes) : undefined,
+    zellijTabCount: payload.tab_count != null ? Number(payload.tab_count) : undefined,
+    zellijFocusedTitles: Array.isArray(payload.focused_titles) ? payload.focused_titles.map(String) : undefined,
+    zellijActiveTab: firstString(payload, ["active_tab"]),
   };
 
   const shouldLeave = event.event_name === "SubagentStop" ||

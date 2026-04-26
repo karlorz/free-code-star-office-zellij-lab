@@ -67,6 +67,11 @@ export interface SignalContext {
   controlPlanePermissionUpdatesCount?: number;
   permissionSuggestionsCount?: number;
   stopHookActive?: boolean;
+  zellijEvent?: string;
+  zellijPaneCount?: number;
+  zellijTabCount?: number;
+  zellijFocusedTitles?: string[];
+  zellijActiveTab?: string;
 }
 
 export interface NormalizedSignal {

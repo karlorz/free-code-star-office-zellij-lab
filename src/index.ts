@@ -329,6 +329,41 @@ const server = Bun.serve({
       return processSignal(signal, "claude-hook", event);
     }
 
+    if (request.method === "POST" && url.pathname === "/hook/zellij") {
+      const rawBody = await request.text();
+      let body: Record<string, unknown>;
+
+      try {
+        body = JSON.parse(rawBody) as Record<string, unknown>;
+      } catch {
+        return json({ ok: false, error: "invalid json" }, { status: 400 });
+      }
+
+      const zellijEvent = typeof body.zellij_event === "string" ? body.zellij_event : "unknown";
+      const sessionId = typeof body.session_id === "string" ? body.session_id : "zellij-monitor";
+      const state: NormalizedSignal["state"] = zellijEvent === "pane_update" ? "syncing" : "syncing";
+
+      const signal: NormalizedSignal = {
+        sessionId,
+        agentName: "main",
+        scope: "main",
+        state,
+        detail: zellijEvent,
+        eventName: typeof body.hook_event_name === "string" ? body.hook_event_name : "ZellijEvent",
+        shouldLeave: false,
+        context: {
+          cwd: typeof body.cwd === "string" ? body.cwd : "/",
+          zellijEvent,
+          zellijPaneCount: body.total_panes != null ? Number(body.total_panes) : undefined,
+          zellijTabCount: body.tab_count != null ? Number(body.tab_count) : undefined,
+          zellijFocusedTitles: Array.isArray(body.focused_titles) ? body.focused_titles.map(String) : undefined,
+          zellijActiveTab: typeof body.active_tab === "string" ? body.active_tab : undefined,
+        },
+      };
+
+      return processSignal(signal, "zellij-hook");
+    }
+
     if (request.method === "POST" && url.pathname === "/event/manual") {
       let body: {
         sessionId?: string;
