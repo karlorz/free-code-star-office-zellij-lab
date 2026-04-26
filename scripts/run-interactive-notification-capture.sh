@@ -382,23 +382,37 @@ if [[ -n "${ZELLIJ_SESSION_NAME}" ]]; then
   zellij_session_label="${ZELLIJ_SESSION_NAME}"
 fi
 
+# Construct attach URL hint (token redacted)
+zellij_attach_hint="N/A (no token)"
+if [[ -n "${ZELLIJ_WEB_TOKEN}" && -n "${ZELLIJ_WEB_URL}" ]]; then
+  zellij_attach_hint="${ZELLIJ_WEB_URL}?token=<redacted>"
+fi
+
 echo "[interactive-capture] bridge: ${BRIDGE_URL}"
 echo "[interactive-capture] plugin: ${PLUGIN_DIR}"
 echo "[interactive-capture] events: ${EVENTS_LOG}"
 echo "[interactive-capture] bridge log: ${BRIDGE_LOG}"
 echo "[interactive-capture] free-code args: ${runtime_args[*]}"
-echo "[interactive-capture] sg01 Zellij web: ${ZELLIJ_WEB_URL}"
-echo "[interactive-capture] sg01 Zellij session: ${zellij_session_label}"
-echo "[interactive-capture] sg01 Zellij web token: ${zellij_token_status}"
-if [[ "${CAPTURE_SSE_PROOF}" == "true" ]]; then
-  echo "[interactive-capture] SSE proof: ${SSE_PROOF_PATH}"
-fi
+echo ""
+echo "[interactive-capture] === sg01 Zellij Web Checklist ==="
+echo "  Web URL:    ${ZELLIJ_WEB_URL}"
+echo "  Session:    ${zellij_session_label}"
+echo "  Token:      ${zellij_token_status}"
+echo "  Attach:     ${zellij_attach_hint}"
+echo ""
 echo "[interactive-capture] operator checklist:"
-echo "  1. Open the sg01 Zellij web URL above."
+echo "  1. Open the sg01 Zellij web URL above (or use the attach URL with your token)."
 echo "  2. Provide the Zellij web token in the browser/operator flow when prompted; do not paste it into this repo."
 echo "  3. Attach to the expected session if one is configured."
-echo "  4. Use the interactive leader session launched by this script."
-echo "  5. Follow the selected capture batch guidance below."
+echo "  4. If using a remote bridge (REMOTE_BRIDGE=true), the dashboard is at ${BRIDGE_URL}/events/test"
+echo "  5. Use the interactive leader session launched by this script."
+echo "  6. Follow the selected capture batch guidance below."
+echo ""
+echo "[interactive-capture] worker permission probe:"
+echo "  - Trigger: have a worker run a command requiring permission in default mode"
+echo "  - Expected: PermissionRequest event in bridge log"
+echo "  - After: approve or deny only after the event appears"
+echo ""
 print_batch_guidance
 echo "[interactive-capture] recommended leader prompt:"
 printf '%s\n' "${LEADER_PROMPT}"
