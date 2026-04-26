@@ -114,6 +114,26 @@ function isAuthorized(request: Request): boolean {
   return request.headers.get("x-bridge-secret") === config.secret;
 }
 
+// Simple rate limiter: per-IP sliding window
+const rateLimits = new Map<string, { count: number; windowStart: number }>();
+const RATE_LIMIT_WINDOW = 60_000; // 1 minute
+const RATE_LIMIT_MAX = 120; // requests per window
+
+function checkRateLimit(request: Request): string | null {
+  const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "local";
+  const now = Date.now();
+  const entry = rateLimits.get(ip);
+  if (!entry || now - entry.windowStart > RATE_LIMIT_WINDOW) {
+    rateLimits.set(ip, { count: 1, windowStart: now });
+    return null;
+  }
+  entry.count++;
+  if (entry.count > RATE_LIMIT_MAX) {
+    return ip;
+  }
+  return null;
+}
+
 async function processSignal(
   signal: NormalizedSignal,
   source: string,
@@ -235,6 +255,14 @@ const server = Bun.serve({
 });
 
 async function handleRequest(request: Request, url: URL): Promise<Response> {
+    // Rate limit POST endpoints
+    if (request.method === "POST") {
+      const limited = checkRateLimit(request);
+      if (limited) {
+        return json({ ok: false, error: "rate limited", retryAfterMs: RATE_LIMIT_WINDOW }, { status: 429 });
+      }
+    }
+
     if (!isAuthorized(request) && request.method !== "GET") {
       return json({ ok: false, error: "unauthorized" }, { status: 401, headers: CORS_HEADERS });
     }
