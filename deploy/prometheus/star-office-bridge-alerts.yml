@@ -1,0 +1,233 @@
+# Star Office Bridge + Caddy alerting rules for Prometheus
+# Scrape target: http://localhost:4317/metrics/combined (bridge + caddy merged)
+# Source: prometheus-alerting-grafana-dashboard-deep-research.md
+
+groups:
+  # ── Bridge Application Alerts ──────────────────────────────────────
+  - name: star-office-bridge.health
+    interval: 30s
+    rules:
+      # CRITICAL: Bridge memory approaching container limit
+      - alert: BridgeCriticalMemory
+        expr: |
+          bridge_process_memory_rss_bytes / on(instance)
+          (node_memory_MemTotal_bytes or on(instance) vector(1073741824)) > 0.85
+        for: 2m
+        labels:
+          severity: critical
+          service: star-office-bridge
+        annotations:
+          summary: "Bridge RSS memory critical on {{ $labels.instance }}"
+          description: >-
+            Bridge RSS memory is {{ $value | humanizePercentage }} of total memory.
+            Risk of OOM kill. Current RSS: {{ $value | printf "%.0f" }} bytes.
+
+      # CRITICAL: Caddy upstream (the bridge) is unhealthy
+      - alert: CaddyUpstreamDown
+        expr: caddy_reverse_proxy_upstreams_healthy == 0
+        for: 1m
+        labels:
+          severity: critical
+          service: caddy
+        annotations:
+          summary: "Caddy upstream {{ $labels.upstream }} is unhealthy"
+          description: >-
+            Caddy has marked upstream {{ $labels.upstream }} as unhealthy.
+            New SSE/WebSocket connections will be rejected.
+
+      # CRITICAL: Caddy config reload failed
+      - alert: CaddyConfigReloadFailed
+        expr: caddy_config_last_reload_successful == 0
+        for: 1m
+        labels:
+          severity: critical
+          service: caddy
+        annotations:
+          summary: "Caddy config reload failed"
+          description: >-
+            Last Caddy config reload was unsuccessful. Running with stale configuration.
+
+      # WARNING: Bridge memory elevated
+      - alert: BridgeHighMemory
+        expr: |
+          bridge_process_memory_rss_bytes / on(instance)
+          (node_memory_MemTotal_bytes or on(instance) vector(1073741824)) > 0.70
+        for: 5m
+        labels:
+          severity: warning
+          service: star-office-bridge
+        annotations:
+          summary: "Bridge RSS memory elevated on {{ $labels.instance }}"
+          description: >-
+            Bridge RSS memory is {{ $value | humanizePercentage }} of total memory for 5 minutes.
+            Trend upward may indicate connection leak or growing replay buffer.
+
+      # WARNING: SSE client count dropped sharply
+      - alert: BridgeSSEClientsDropped
+        expr: |
+          (deriv(bridge_sse_clients_current[5m]) < -5)
+          and bridge_sse_clients_current > 0
+        for: 2m
+        labels:
+          severity: warning
+          service: star-office-bridge
+        annotations:
+          summary: "SSE client count dropping rapidly on {{ $labels.instance }}"
+          description: >-
+            SSE clients declining at {{ $value | printf "%.1f" }}/min rate.
+            Could indicate upstream issues, network partition, or mass eviction.
+
+      # WARNING: High rate limit rejections
+      - alert: BridgeRateLimitAbuse
+        expr: rate(bridge_rate_limit_rejections_total[5m]) > 10
+        for: 3m
+        labels:
+          severity: warning
+          service: star-office-bridge
+        annotations:
+          summary: "High rate limit rejection rate on {{ $labels.instance }}"
+          description: >-
+            Rate limiter rejecting {{ $value | printf "%.1f" }} requests/sec.
+            Possible abuse, misconfigured client, or legitimate traffic spike.
+
+      # WARNING: SSE replay gaps
+      - alert: BridgeSSEReplayGaps
+        expr: rate(bridge_sse_replay_gaps_total[5m]) > 0.5
+        for: 5m
+        labels:
+          severity: warning
+          service: star-office-bridge
+        annotations:
+          summary: "SSE replay gaps detected on {{ $labels.instance }}"
+          description: >-
+            {{ $value | printf "%.1f" }} replay gaps/sec. Clients reconnecting
+            with stale Last-Event-IDs outside the ring buffer.
+
+      # WARNING: Signal dedup rate abnormally high
+      - alert: BridgeHighSignalDedup
+        expr: |
+          (
+            rate(bridge_signals_duplicate_total[5m])
+            / (rate(bridge_signals_processed_total[5m]) > 0)
+          ) > 0.5
+        for: 10m
+        labels:
+          severity: warning
+          service: star-office-bridge
+        annotations:
+          summary: "Signal dedup rate exceeds 50% on {{ $labels.instance }}"
+          description: >-
+            {{ $value | humanizePercentage }} of signals are duplicates.
+            Possible misbehaving signal source or webhook misconfiguration.
+
+      # WARNING: Caddy high request latency
+      - alert: CaddyHighRequestLatency
+        expr: |
+          histogram_quantile(0.95,
+            sum by(le) (rate(caddy_http_request_duration_seconds_bucket[5m]))
+          ) > 0.5
+        for: 5m
+        labels:
+          severity: warning
+          service: caddy
+        annotations:
+          summary: "Caddy p95 request latency above 500ms"
+          description: >-
+            95th percentile request duration is {{ $value | printf "%.3f" }}s.
+            May indicate bridge overload or network issues.
+
+      # WARNING: Caddy high 5xx error rate
+      - alert: CaddyHigh5xxErrorRate
+        expr: |
+          (
+            sum(rate(caddy_http_request_duration_seconds_count{code=~"5.."}[3m]))
+            / sum(rate(caddy_http_request_duration_seconds_count[3m])) > 0
+          ) > 0.05
+        for: 3m
+        labels:
+          severity: warning
+          service: caddy
+        annotations:
+          summary: "Caddy 5xx error rate exceeds 5%"
+          description: >-
+            5xx errors are {{ $value | humanizePercentage }} of all requests.
+
+      # INFO: SSE client count high
+      - alert: BridgeSSEClientCountHigh
+        expr: bridge_sse_clients_current > 80
+        for: 15m
+        labels:
+          severity: info
+          service: star-office-bridge
+        annotations:
+          summary: "SSE client count above 80 on {{ $labels.instance }}"
+          description: >-
+            {{ $value }} SSE clients connected. Plan for horizontal scaling if trending upward.
+
+      # INFO: Bridge process restarted
+      - alert: BridgeProcessRestarted
+        expr: |
+          bridge_uptime_seconds < 120
+          and bridge_uptime_seconds > 0
+        for: 0m
+        labels:
+          severity: info
+          service: star-office-bridge
+        annotations:
+          summary: "Bridge process restarted on {{ $labels.instance }}"
+          description: >-
+            Bridge uptime is {{ $value | printf "%.0f" }}s, indicating a recent restart.
+
+      # INFO: Caddy in-flight requests elevated
+      - alert: CaddyHighInFlightRequests
+        expr: caddy_http_requests_in_flight > 100
+        for: 10m
+        labels:
+          severity: info
+          service: caddy
+        annotations:
+          summary: "Caddy in-flight requests above 100"
+          description: >-
+            {{ $value }} in-flight requests. High for a single-upstream bridge.
+
+  # ── Recording Rules ────────────────────────────────────────────────
+  - name: star-office-bridge.recording
+    interval: 30s
+    rules:
+      - record: bridge:signal_dedup_ratio:rate5m
+        expr: |
+          rate(bridge_signals_duplicate_total[5m])
+          / (rate(bridge_signals_processed_total[5m]) + rate(bridge_signals_duplicate_total[5m]))
+
+      - record: bridge:signal_rate:rate5m
+        expr: |
+          rate(bridge_signals_processed_total[5m])
+          + rate(bridge_signals_duplicate_total[5m])
+
+      - record: bridge:sse_eviction_rate:rate5m
+        expr: rate(bridge_sse_client_evicted_total[5m])
+
+      - record: bridge:http_request_rate:rate5m
+        expr: sum(rate(bridge_http_requests_total[5m])) without(path)
+
+      - record: caddy:error_5xx_ratio:rate3m
+        expr: |
+          sum(rate(caddy_http_request_duration_seconds_count{code=~"5.."}[3m]))
+          / sum(rate(caddy_http_request_duration_seconds_count[3m]))
+
+      - record: caddy:upstream_health_ratio
+        expr: |
+          sum(caddy_reverse_proxy_upstreams_healthy)
+          / count(caddy_reverse_proxy_upstreams_healthy)
+
+      - record: bridge:http_request_duration:p95
+        expr: |
+          histogram_quantile(0.95,
+            sum by(le) (rate(bridge_http_request_duration_milliseconds_bucket[5m]))
+          )
+
+      - record: caddy:request_duration:p95
+        expr: |
+          histogram_quantile(0.95,
+            sum by(le) (rate(caddy_http_request_duration_seconds_bucket[5m]))
+          )

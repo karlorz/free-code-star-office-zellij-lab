@@ -1,0 +1,21 @@
+# Prometheus scrape configuration for Star Office Bridge + Caddy
+# Single combined endpoint provides both bridge and Caddy metrics
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 30s
+
+scrape_configs:
+  - job_name: star-office-bridge
+    static_configs:
+      - targets: ['127.0.0.1:4317']
+    metrics_path: /metrics/combined
+    scrape_interval: 15s
+
+rule_files:
+  - 'star-office-bridge-alerts.yml'
+
+# alerting:
+#   alertmanagers:
+#     - static_configs:
+#         - targets: ['127.0.0.1:9093']
