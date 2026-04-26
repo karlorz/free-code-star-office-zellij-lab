@@ -1812,6 +1812,35 @@ setInterval(()=>{fetch("/status").then(r=>r.json()).then(d=>{
       return processSignal(signal, "manual");
     }
 
+    // Alertmanager webhook endpoint — receives alerts and broadcasts as SSE events
+    if (request.method === "POST" && url.pathname === "/alert") {
+      let body: Record<string, unknown>;
+      try {
+        body = await request.json() as Record<string, unknown>;
+      } catch {
+        return json({ ok: false, error: "invalid json" }, { status: 400 });
+      }
+      const status = body.status as string || "unknown";
+      const alerts = (body.alerts || []) as Record<string, unknown>[];
+      const summary = {
+        status,
+        alertCount: alerts.length,
+        alerts: alerts.map(a => ({
+          status: a.status,
+          labels: a.labels,
+          annotations: a.annotations,
+          startsAt: a.startsAt,
+          endsAt: a.endsAt,
+        })),
+        externalURL: body.externalURL,
+        groupKey: body.groupKey,
+        receiver: body.receiver,
+      };
+      broadcastSSE("alert", summary);
+      console.log(`[bridge] alert webhook: status=${status} count=${alerts.length}`);
+      return json({ ok: true, broadcast: true });
+    }
+
     return json({ ok: false, error: "not found" }, { status: 404 });
 }
 
@@ -1825,6 +1854,7 @@ const ROUTE_TABLE: { method: string; path: string; description: string; auth: bo
   { method: "GET", path: "/events/log", description: "Persistent event history from events.ndjson", auth: false },
   { method: "GET", path: "/events/test", description: "HTML SSE test page", auth: false },
   { method: "POST", path: "/event/manual", description: "Submit manual events", auth: true },
+  { method: "POST", path: "/alert", description: "Alertmanager webhook (broadcasts alerts as SSE events)", auth: false },
   { method: "GET", path: "/health", description: "Bridge health check (JSON)", auth: false },
   { method: "GET", path: "/healthz", description: "Lightweight liveness probe (plain ok)", auth: false },
   { method: "GET", path: "/readyz", description: "Readiness probe (503 during shutdown)", auth: false },

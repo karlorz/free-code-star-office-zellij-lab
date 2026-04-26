@@ -15,6 +15,11 @@ scrape_configs:
 rule_files:
   - 'star-office-bridge-alerts.yml'
 
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ['127.0.0.1:9093']
+
 # alerting:
 #   alertmanagers:
 #     - static_configs:
