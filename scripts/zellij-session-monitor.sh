@@ -36,6 +36,8 @@ last_focused_titles=''
 last_focused_cwd=''
 last_focused_command=''
 last_client_count=0
+last_tab_names=''
+last_floating_count=0
 
 post_event() {
   local json_body="$1"
@@ -46,102 +48,124 @@ post_event() {
 
 echo "[zellij-monitor] watching session: ${SESSION_NAME} interval: ${POLL_INTERVAL}s bridge: ${BRIDGE_URL}"
 
-# Helper: extract focused pane metadata from list-panes JSON
-# Outputs: pane_count|focused_titles_json|focused_cwd|focused_terminal_command|exited_panes_json
+# Single-pass pane metadata extraction — outputs shell key=value pairs
+# Key=value format: simple scalars are bare, JSON arrays/objects are JSON-encoded
 extract_pane_metadata() {
   python3 -c '
 import json, sys
-d = json.load(sys.stdin)
+try:
+  d = json.loads(sys.stdin.read())
+except json.JSONDecodeError:
+  d = []
 terminals = [p for p in d if not p.get("is_plugin")]
-pane_count = len(terminals)
 focused = [p for p in terminals if p.get("is_focused")]
-focused_titles = [p["title"] for p in focused]
-focused_cwd = focused[0].get("pane_cwd","") if focused else ""
-focused_cmd = focused[0].get("terminal_command","") or focused[0].get("pane_command","") if focused else ""
 exited = [{"id":p["id"],"exit_status":p.get("exit_status"),"is_held":p.get("is_held",False),"title":p.get("title","")} for p in terminals if p.get("exited")]
-floating = sum(1 for p in terminals if p.get("is_floating"))
-print(json.dumps({
-  "pane_count": pane_count,
-  "focused_titles": focused_titles,
-  "focused_cwd": focused_cwd,
-  "focused_command": focused_cmd,
-  "exited_panes": exited,
-  "floating_count": floating
-}))
+fc = focused[0] if focused else {}
+print("pane_count=" + str(len(terminals)))
+print("focused_titles=" + json.dumps([p["title"] for p in focused]))
+print("focused_cwd=" + fc.get("pane_cwd",""))
+print("focused_command=" + (fc.get("terminal_command") or fc.get("pane_command") or ""))
+print("exited_panes=" + json.dumps(exited))
+print("floating_count=" + str(sum(1 for p in terminals if p.get("is_floating"))))
 ' 2>/dev/null
+}
+
+# Single-pass tab metadata extraction — outputs shell key=value pairs
+extract_tab_metadata() {
+  python3 -c '
+import json, sys
+try:
+  d = json.loads(sys.stdin.read())
+except json.JSONDecodeError:
+  d = []
+active = ""
+for t in d:
+  if t.get("active"):
+    active = t.get("name","")
+    break
+else:
+  if d:
+    active = d[0].get("name","")
+print("tab_count=" + str(len(d)))
+print("active_tab=" + active)
+print("tab_names=" + json.dumps([t.get("name","") for t in d]))
+' 2>/dev/null
+}
+
+# Read key=value output into associative array
+declare -A _meta
+read_kv() {
+  _meta=()
+  local line key value
+  while IFS= read -r line; do
+    key="${line%%=*}"
+    value="${line#*=}"
+    _meta["$key"]="$value"
+  done
 }
 
 # Push initial state on startup
 pane_json="$(ZELLIJ_SESSION_NAME="$SESSION_NAME" zellij action list-panes --json 2>/dev/null)"
 if [[ -n "$pane_json" ]]; then
-  meta="$(echo "$pane_json" | extract_pane_metadata)"
-  pane_count="$(echo "$meta" | python3 -c 'import json,sys; print(json.load(sys.stdin)["pane_count"])')"
-  focused="$(echo "$meta" | python3 -c 'import json,sys; print(json.dumps(json.load(sys.stdin)["focused_titles"]))')"
-  focused_cwd="$(echo "$meta" | python3 -c 'import json,sys; print(json.load(sys.stdin)["focused_cwd"])')"
-  focused_cmd="$(echo "$meta" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d["focused_command"])')"
-  exited="$(echo "$meta" | python3 -c 'import json,sys; print(json.dumps(json.load(sys.stdin)["exited_panes"]))')"
+  read_kv < <(echo "$pane_json" | extract_pane_metadata)
+  pane_count="${_meta[pane_count]:-0}"
+  focused_titles="${_meta[focused_titles]:-[]}"
+  focused_cwd="${_meta[focused_cwd]:-}"
+  focused_command="${_meta[focused_command]:-}"
+  exited_panes="${_meta[exited_panes]:-[]}"
+  floating_count="${_meta[floating_count]:-0}"
 
   last_pane_count="$pane_count"
-  last_focused_titles="$focused"
+  last_focused_titles="$focused_titles"
   last_focused_cwd="$focused_cwd"
-  last_focused_command="$focused_cmd"
-  post_event "{\"hook_event_name\":\"FileChanged\",\"session_id\":\"zellij-monitor\",\"cwd\":\"${focused_cwd}\",\"zellij_event\":\"pane_update\",\"total_panes\":$pane_count,\"focused_titles\":$focused,\"terminal_command\":\"${focused_cmd}\",\"exited_panes\":$exited}"
+  last_focused_command="$focused_command"
+  last_floating_count="$floating_count"
+  post_event "{\"hook_event_name\":\"FileChanged\",\"session_id\":\"zellij-monitor\",\"cwd\":\"${focused_cwd}\",\"zellij_event\":\"pane_update\",\"total_panes\":$pane_count,\"focused_titles\":$focused_titles,\"terminal_command\":\"${focused_command}\",\"exited_panes\":$exited_panes,\"floating_count\":$floating_count}"
 fi
+
 tab_json="$(ZELLIJ_SESSION_NAME="$SESSION_NAME" zellij action list-tabs --json 2>/dev/null)"
 if [[ -n "$tab_json" ]]; then
-  tab_count="$(echo "$tab_json" | python3 -c 'import json,sys; print(len(json.load(sys.stdin)))')"
-  active_tab="$(echo "$tab_json" | python3 -c '
-import json, sys
-d = json.load(sys.stdin)
-for t in d:
-    if t.get("active"):
-        print(t.get("name",""))
-        break
-else:
-    if d:
-        print(d[0].get("name",""))
-    else:
-        print("")
-' 2>/dev/null || echo '')"
-  tab_names="$(echo "$tab_json" | python3 -c '
-import json, sys
-d = json.load(sys.stdin)
-print(json.dumps([t.get("name","") for t in d]))
-' 2>/dev/null || echo '[]')"
+  read_kv < <(echo "$tab_json" | extract_tab_metadata)
+  tab_count="${_meta[tab_count]:-0}"
+  active_tab="${_meta[active_tab]:-}"
+  tab_names="${_meta[tab_names]:-[]}"
+
   last_tab_count="$tab_count"
   last_active_tab="$active_tab"
+  last_tab_names="$tab_names"
   post_event "{\"hook_event_name\":\"CwdChanged\",\"session_id\":\"zellij-monitor\",\"cwd\":\"/\",\"zellij_event\":\"tab_update\",\"tab_count\":$tab_count,\"tabs\":$tab_names,\"active_tab\":\"$active_tab\"}"
 fi
 
 while true; do
-  # Get pane info via JSON with full metadata
+  # Get pane info via JSON — single python3 pass
   pane_json="$(ZELLIJ_SESSION_NAME="$SESSION_NAME" zellij action list-panes --json 2>/dev/null)"
   if [[ -n "$pane_json" ]]; then
-    meta="$(echo "$pane_json" | extract_pane_metadata)"
-    pane_count="$(echo "$meta" | python3 -c 'import json,sys; print(json.load(sys.stdin)["pane_count"])')"
-    focused="$(echo "$meta" | python3 -c 'import json,sys; print(json.dumps(json.load(sys.stdin)["focused_titles"]))')"
-    focused_cwd="$(echo "$meta" | python3 -c 'import json,sys; print(json.load(sys.stdin)["focused_cwd"])')"
-    focused_cmd="$(echo "$meta" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d["focused_command"])')"
-    exited="$(echo "$meta" | python3 -c 'import json,sys; print(json.dumps(json.load(sys.stdin)["exited_panes"]))')"
+    read_kv < <(echo "$pane_json" | extract_pane_metadata)
+    pane_count="${_meta[pane_count]:-0}"
+    focused_titles="${_meta[focused_titles]:-[]}"
+    focused_cwd="${_meta[focused_cwd]:-}"
+    focused_command="${_meta[focused_command]:-}"
+    exited_panes="${_meta[exited_panes]:-[]}"
+    floating_count="${_meta[floating_count]:-0}"
 
-    if [[ "$pane_count" -ne "$last_pane_count" || "$focused" != "$last_focused_titles" ]]; then
-      post_event "{\"hook_event_name\":\"FileChanged\",\"session_id\":\"zellij-monitor\",\"cwd\":\"${focused_cwd}\",\"zellij_event\":\"pane_update\",\"total_panes\":$pane_count,\"focused_titles\":$focused,\"terminal_command\":\"${focused_cmd}\",\"exited_panes\":$exited}"
+    if [[ "$pane_count" -ne "$last_pane_count" || "$focused_titles" != "$last_focused_titles" || "$floating_count" -ne "$last_floating_count" ]]; then
+      post_event "{\"hook_event_name\":\"FileChanged\",\"session_id\":\"zellij-monitor\",\"cwd\":\"${focused_cwd}\",\"zellij_event\":\"pane_update\",\"total_panes\":$pane_count,\"focused_titles\":$focused_titles,\"terminal_command\":\"${focused_command}\",\"exited_panes\":$exited_panes,\"floating_count\":$floating_count}"
       last_pane_count="$pane_count"
-      last_focused_titles="$focused"
+      last_focused_titles="$focused_titles"
+      last_floating_count="$floating_count"
     fi
     if [[ "$focused_cwd" != "$last_focused_cwd" && -n "$focused_cwd" ]]; then
-      post_event "{\"hook_event_name\":\"CwdChanged\",\"session_id\":\"zellij-monitor\",\"cwd\":\"${focused_cwd}\",\"zellij_event\":\"cwd_change\",\"focused_titles\":$focused,\"terminal_command\":\"${focused_cmd}\"}"
+      post_event "{\"hook_event_name\":\"CwdChanged\",\"session_id\":\"zellij-monitor\",\"cwd\":\"${focused_cwd}\",\"zellij_event\":\"cwd_change\",\"focused_titles\":$focused_titles,\"terminal_command\":\"${focused_command}\"}"
       last_focused_cwd="$focused_cwd"
     fi
-    if [[ "$focused_cmd" != "$last_focused_command" ]]; then
-      post_event "{\"hook_event_name\":\"Setup\",\"session_id\":\"zellij-monitor\",\"cwd\":\"${focused_cwd}\",\"zellij_event\":\"command_change\",\"terminal_command\":\"${focused_cmd}\",\"focused_titles\":$focused}"
-      last_focused_command="$focused_cmd"
+    if [[ "$focused_command" != "$last_focused_command" ]]; then
+      post_event "{\"hook_event_name\":\"Setup\",\"session_id\":\"zellij-monitor\",\"cwd\":\"${focused_cwd}\",\"zellij_event\":\"command_change\",\"terminal_command\":\"${focused_command}\",\"focused_titles\":$focused_titles}"
+      last_focused_command="$focused_command"
     fi
     # Detect pane exits
-    exited_count="$(echo "$exited" | python3 -c 'import json,sys; print(len(json.load(sys.stdin)))')"
+    exited_count="$(echo "$exited_panes" | python3 -c 'import json,sys; print(len(json.load(sys.stdin)))' 2>/dev/null || echo 0)"
     if [[ "$exited_count" -gt 0 ]]; then
-      # Post individual exit events
-      echo "$exited" | python3 -c "
+      echo "$exited_panes" | python3 -c "
 import json, sys
 for p in json.load(sys.stdin):
     exit_status = p.get('exit_status')
@@ -154,32 +178,19 @@ for p in json.load(sys.stdin):
     fi
   fi
 
-  # Get tab info via JSON
+  # Get tab info via JSON — single python3 pass
   tab_json="$(ZELLIJ_SESSION_NAME="$SESSION_NAME" zellij action list-tabs --json 2>/dev/null)"
   if [[ -n "$tab_json" ]]; then
-    tab_count="$(echo "$tab_json" | python3 -c 'import json,sys; print(len(json.load(sys.stdin)))')"
-    active_tab="$(echo "$tab_json" | python3 -c '
-import json, sys
-d = json.load(sys.stdin)
-for t in d:
-    if t.get("active"):
-        print(t.get("name",""))
-        break
-else:
-    if d:
-        print(d[0].get("name",""))
-    else:
-        print("")
-' 2>/dev/null || echo '')"
-    if [[ "$tab_count" -ne "$last_tab_count" || "$active_tab" != "$last_active_tab" ]]; then
-      tab_names="$(echo "$tab_json" | python3 -c '
-import json, sys
-d = json.load(sys.stdin)
-print(json.dumps([t.get("name","") for t in d]))
-' 2>/dev/null || echo '[]')"
+    read_kv < <(echo "$tab_json" | extract_tab_metadata)
+    tab_count="${_meta[tab_count]:-0}"
+    active_tab="${_meta[active_tab]:-}"
+    tab_names="${_meta[tab_names]:-[]}"
+
+    if [[ "$tab_count" -ne "$last_tab_count" || "$active_tab" != "$last_active_tab" || "$tab_names" != "$last_tab_names" ]]; then
       post_event "{\"hook_event_name\":\"CwdChanged\",\"session_id\":\"zellij-monitor\",\"cwd\":\"/\",\"zellij_event\":\"tab_update\",\"tab_count\":$tab_count,\"tabs\":$tab_names,\"active_tab\":\"$active_tab\"}"
       last_tab_count="$tab_count"
       last_active_tab="$active_tab"
+      last_tab_names="$tab_names"
     fi
   fi
 
