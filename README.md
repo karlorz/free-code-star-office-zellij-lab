@@ -98,6 +98,7 @@ Before a live run on sg01, check target-host readiness without installing softwa
 
 ```bash
 bash ./scripts/check-sg01-live-capture-readiness.sh
+bash ./scripts/check-sg01-live-capture-readiness.sh --strict --report tmp/sg01-readiness-report.md
 ```
 
 After a live run, summarize the captured artifact without triggering any new runtime actions:
