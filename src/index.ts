@@ -1,4 +1,4 @@
-import { mkdir, appendFile } from "node:fs/promises";
+import { mkdir, appendFile, readFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { loadConfig } from "./config";
 import { SessionRegistry } from "./sessionRegistry";
@@ -850,6 +850,90 @@ es.onmessage=e=>{add("other",e.type+": "+e.data)};
         processed: results.length,
         results,
       });
+    }
+
+    if (request.method === "POST" && url.pathname === "/action") {
+      if (!isAuthorized(request)) {
+        return json({ ok: false, error: "action endpoint requires authentication" }, { status: 401 });
+      }
+
+      const ALLOWED_ACTIONS = new Set([
+        "new-tab", "close-tab", "close-tab-by-id", "go-to-tab", "go-to-tab-by-id", "go-to-tab-name",
+        "go-to-next-tab", "go-to-previous-tab", "rename-tab",
+        "new-pane", "close-pane", "focus-next-pane", "focus-previous-pane", "focus-pane-id",
+        "toggle-fullscreen", "toggle-pane-embed-or-floating", "toggle-floating-panes",
+        "show-floating-panes", "hide-floating-panes",
+        "move-focus", "move-focus-or-tab", "resize",
+        "write", "write-chars", "switch-mode",
+        "dump-screen", "dump-layout", "current-tab-info",
+        "start-or-reload-plugin", "launch-or-focus-plugin",
+        "list-clients", "list-panes", "list-tabs",
+        "subscribe",
+      ]);
+
+      let body: { action: string; args?: string[]; session?: string };
+      try {
+        body = (await request.json()) as { action: string; args?: string[]; session?: string };
+      } catch {
+        return json({ ok: false, error: "invalid json" }, { status: 400 });
+      }
+
+      if (!body.action || !ALLOWED_ACTIONS.has(body.action)) {
+        return json({
+          ok: false,
+          error: "disallowed action",
+          action: body.action,
+          allowed: [...ALLOWED_ACTIONS].sort(),
+        }, { status: 403 });
+      }
+
+      const session = body.session || config.zellijSessionName || "main";
+      const args = body.args || [];
+      const env = { ZELLIJ_SESSION_NAME: session, HOME: process.env.HOME || "/root", XDG_RUNTIME_DIR: process.env.XDG_RUNTIME_DIR || "/run/user/0" };
+
+      try {
+        const cmd = ["zellij", "action", body.action, ...args];
+        const proc = Bun.spawn(cmd, { env, stdout: "pipe", stderr: "pipe" });
+        const stdout = await new Response(proc.stdout).text();
+        const stderr = await new Response(proc.stderr).text();
+        const exitCode = await proc.exited;
+
+        if (exitCode !== 0) {
+          return json({
+            ok: false,
+            action: body.action,
+            args,
+            session,
+            exitCode,
+            stderr: stderr.trim() || null,
+          }, { status: 502 });
+        }
+
+        // Parse JSON output if applicable
+        let parsed: unknown = stdout.trim();
+        if (typeof parsed === "string" && parsed.startsWith("[")) {
+          try { parsed = JSON.parse(parsed); } catch { /* keep as string */ }
+        } else if (typeof parsed === "string" && parsed.startsWith("{")) {
+          try { parsed = JSON.parse(parsed); } catch { /* keep as string */ }
+        }
+
+        broadcastSSE("action_executed", { action: body.action, args, session, exitCode });
+
+        return json({
+          ok: true,
+          action: body.action,
+          args,
+          session,
+          exitCode,
+          result: parsed || null,
+        });
+      } catch (error) {
+        return json({
+          ok: false,
+          action: body.action,
+          error: error instanceof Error ? error.message : String(error),
+        }, { status: 500 });
+      }
     }
 
     if (request.method === "POST" && url.pathname === "/event/manual") {

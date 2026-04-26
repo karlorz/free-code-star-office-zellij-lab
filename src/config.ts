@@ -18,5 +18,6 @@ export function loadConfig(): BridgeConfig {
     starOfficeUrl: process.env.STAR_OFFICE_URL || undefined,
     starOfficeJoinKey: process.env.STAR_OFFICE_JOIN_KEY || undefined,
     mainAgentName: process.env.STAR_OFFICE_MAIN_AGENT_NAME || "free-code",
+    zellijSessionName: process.env.ZELLIJ_SESSION_NAME || undefined,
   };
 }
