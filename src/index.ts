@@ -251,6 +251,22 @@ const server = Bun.serve({
       });
     }
 
+    if (request.method === "GET" && url.pathname === "/events/recent") {
+      const afterId = url.searchParams.get("after_id") || undefined;
+      let events = sseEventLog;
+      if (afterId) {
+        const afterIndex = sseEventLog.findIndex((e) => e.id === afterId);
+        if (afterIndex !== -1) {
+          events = sseEventLog.slice(afterIndex + 1);
+        }
+      }
+      return json({
+        ok: true,
+        count: events.length,
+        events,
+      });
+    }
+
     if (request.method === "POST" && url.pathname === "/hook/claude") {
       const rawBody = await request.text();
       let body: ClaudeBridgeEvent;

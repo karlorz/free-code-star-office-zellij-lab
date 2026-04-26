@@ -1016,5 +1016,40 @@ PY
   echo "SSE replay verified: client received events after Last-Event-ID"
 fi
 
+echo "[29/31] GET /events/recent endpoint"
+recent_json="$(curl -fsS "${BRIDGE_URL}/events/recent")"
+RECENT_JSON="${recent_json}" python3 - <<'PY'
+import json, os
+payload = json.loads(os.environ["RECENT_JSON"])
+if not payload.get("ok"):
+    raise SystemExit("/events/recent returned ok=false")
+events = payload.get("events", [])
+if not isinstance(events, list):
+    raise SystemExit("/events/recent events is not a list")
+if len(events) == 0:
+    raise SystemExit("/events/recent returned empty events list")
+for e in events:
+    if "id" not in e or "event" not in e or "payload" not in e:
+        raise SystemExit(f"/events/recent entry missing required fields: {e}")
+print(f"/events/recent ok: {len(events)} events")
+PY
+
+# Test /events/recent?after_id=<id>
+first_id="$(echo "${recent_json}" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d['events'][0]['id'])" 2>/dev/null)"
+if [[ -n "${first_id}" ]]; then
+  after_json="$(curl -fsS "${BRIDGE_URL}/events/recent?after_id=${first_id}")"
+  AFTER_JSON="${after_json}" python3 - <<'PY'
+import json, os
+payload = json.loads(os.environ["AFTER_JSON"])
+if not payload.get("ok"):
+    raise SystemExit("/events/recent?after_id returned ok=false")
+events = payload.get("events", [])
+if len(events) == 0:
+    raise SystemExit("/events/recent?after_id returned empty events")
+first_id = events[0].get("id", "?")
+print(f"/events/recent?after_id ok: {len(events)} events after first ID")
+PY
+fi
+
 echo "[31/31] smoke pass"
 echo "smoke test passed"
