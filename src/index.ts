@@ -4,6 +4,7 @@ import { loadConfig, timingSafeCompare } from "./config";
 import { SessionRegistry } from "./sessionRegistry";
 import { StarOfficeClient } from "./starOfficeClient";
 import { normalizeClaudeEvent } from "./stateMapper";
+import { sendAction as ipcSendAction, listSessionSockets } from "./zellijIpc";
 import type {
   BridgeErrorInfo,
   BridgeEventLogEntry,
@@ -16,7 +17,7 @@ const SSE_MAX_BUFFERED_MESSAGES = 32; // Drop clients with more than this many b
 let sseEventSeq = 0;
 let sseClientSeq = 0;
 const sseClients = new Map<number, { controller: ReadableStreamDefaultController; buffered: number; connectedAt: number }>();
-const BRIDGE_VERSION = "0.35.0";
+const BRIDGE_VERSION = "0.36.0";
 
 // Shared environment for zellij CLI subprocess calls
 function zellijEnv(session?: string): Record<string, string | undefined> {
@@ -2252,12 +2253,65 @@ setInterval(()=>{fetch("/status").then(r=>r.json()).then(d=>{
       const args = body.args || [];
       const env = zellijEnv(session);
 
+      // Actions that can use direct UDS IPC (3.6x faster than CLI spawn)
+      const IPC_ELIGIBLE = new Set(["list-tabs", "list-panes", "list-clients", "current-tab-info",
+        "go-to-next-tab", "go-to-previous-tab", "close-tab", "new-tab", "rename-tab",
+        "move-focus", "move-focus-or-tab", "toggle-fullscreen", "toggle-pane-frames",
+        "toggle-floating-panes", "focus-next-pane", "focus-previous-pane",
+        "detach", "no-op", "scroll-up", "scroll-down", "scroll-to-bottom", "scroll-to-top",
+        "clear-screen", "dump-screen", "dump-layout", "save-session", "rename-session",
+      ]);
+
       try {
+        let stdout = "";
+        let stderr = "";
+        let exitCode = 0;
+
+        if (IPC_ELIGIBLE.has(body.action)) {
+          // Fast path: direct UDS+protobuf IPC (avg 13ms vs 48ms CLI)
+          try {
+            const responses = await ipcSendAction(session, body.action, args);
+            // Extract output from Log messages (query results come via log channel)
+            for (const r of responses) {
+              if ("log" in r && (r as Record<string, unknown>).log) {
+                const logObj = (r as Record<string, unknown>).log as Record<string, unknown>;
+                if (Array.isArray(logObj.lines)) {
+                  stdout = (logObj.lines as string[]).join("");
+                }
+              }
+            }
+            // Parse JSON output if applicable
+            let parsed: unknown = stdout.trim();
+            if (typeof parsed === "string" && parsed.startsWith("[")) {
+              try { parsed = JSON.parse(parsed); } catch { /* keep as string */ }
+            } else if (typeof parsed === "string" && parsed.startsWith("{")) {
+              try { parsed = JSON.parse(parsed); } catch { /* keep as string */ }
+            }
+
+            broadcastSSE("action_executed", { action: body.action, args, session, exitCode: 0, via: "ipc" });
+            metrics.actionsExecuted++;
+
+            return json({
+              ok: true,
+              action: body.action,
+              args,
+              session,
+              exitCode: 0,
+              via: "ipc",
+              result: parsed || null,
+            });
+          } catch (ipcError) {
+            // IPC failed — fall through to CLI spawn
+            console.warn(`[bridge] IPC failed for ${body.action}, falling back to CLI:`, ipcError instanceof Error ? ipcError.message : String(ipcError));
+          }
+        }
+
+        // Slow path: CLI spawn (fallback for IPC failures and non-eligible actions)
         const cmd = ["zellij", "action", body.action, ...args];
         const proc = Bun.spawn(cmd, { env, stdout: "pipe", stderr: "pipe" });
-        const stdout = await new Response(proc.stdout).text();
-        const stderr = await new Response(proc.stderr).text();
-        const exitCode = await proc.exited;
+        stdout = await new Response(proc.stdout).text();
+        stderr = await new Response(proc.stderr).text();
+        exitCode = await proc.exited;
 
         if (exitCode !== 0) {
           return json({
