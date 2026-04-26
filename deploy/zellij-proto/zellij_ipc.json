@@ -1,0 +1,5526 @@
+{
+  "nested": {
+    "client_server_contract": {
+      "nested": {
+        "ClientToServerMsg": {
+          "oneofs": {
+            "message": {
+              "oneof": [
+                "detach_session",
+                "terminal_pixel_dimensions",
+                "background_color",
+                "foreground_color",
+                "color_registers",
+                "terminal_resize",
+                "first_client_connected",
+                "attach_client",
+                "action",
+                "key",
+                "client_exited",
+                "kill_session",
+                "conn_status",
+                "web_server_started",
+                "failed_to_start_web_server",
+                "attach_watcher_client",
+                "subscribe_to_pane_renders",
+                "desktop_notification_response"
+              ]
+            }
+          },
+          "fields": {
+            "detach_session": {
+              "type": "DetachSessionMsg",
+              "id": 1
+            },
+            "terminal_pixel_dimensions": {
+              "type": "TerminalPixelDimensionsMsg",
+              "id": 2
+            },
+            "background_color": {
+              "type": "BackgroundColorMsg",
+              "id": 3
+            },
+            "foreground_color": {
+              "type": "ForegroundColorMsg",
+              "id": 4
+            },
+            "color_registers": {
+              "type": "ColorRegistersMsg",
+              "id": 5
+            },
+            "terminal_resize": {
+              "type": "TerminalResizeMsg",
+              "id": 6
+            },
+            "first_client_connected": {
+              "type": "FirstClientConnectedMsg",
+              "id": 7
+            },
+            "attach_client": {
+              "type": "AttachClientMsg",
+              "id": 8
+            },
+            "action": {
+              "type": "ActionMsg",
+              "id": 9
+            },
+            "key": {
+              "type": "KeyMsg",
+              "id": 10
+            },
+            "client_exited": {
+              "type": "ClientExitedMsg",
+              "id": 11
+            },
+            "kill_session": {
+              "type": "KillSessionMsg",
+              "id": 12
+            },
+            "conn_status": {
+              "type": "ConnStatusMsg",
+              "id": 13
+            },
+            "web_server_started": {
+              "type": "WebServerStartedMsg",
+              "id": 14
+            },
+            "failed_to_start_web_server": {
+              "type": "FailedToStartWebServerMsg",
+              "id": 15
+            },
+            "attach_watcher_client": {
+              "type": "AttachWatcherClientMsg",
+              "id": 16
+            },
+            "subscribe_to_pane_renders": {
+              "type": "SubscribeToPaneRendersMsg",
+              "id": 17
+            },
+            "desktop_notification_response": {
+              "type": "DesktopNotificationResponseMsg",
+              "id": 18
+            }
+          }
+        },
+        "DetachSessionMsg": {
+          "fields": {
+            "client_ids": {
+              "rule": "repeated",
+              "type": "uint32",
+              "id": 1
+            }
+          }
+        },
+        "TerminalPixelDimensionsMsg": {
+          "fields": {
+            "pixel_dimensions": {
+              "type": "PixelDimensions",
+              "id": 1
+            }
+          }
+        },
+        "BackgroundColorMsg": {
+          "fields": {
+            "color": {
+              "type": "string",
+              "id": 1
+            }
+          }
+        },
+        "ForegroundColorMsg": {
+          "fields": {
+            "color": {
+              "type": "string",
+              "id": 1
+            }
+          }
+        },
+        "ColorRegistersMsg": {
+          "fields": {
+            "color_registers": {
+              "rule": "repeated",
+              "type": "ColorRegister",
+              "id": 1
+            }
+          }
+        },
+        "TerminalResizeMsg": {
+          "fields": {
+            "new_size": {
+              "type": "Size",
+              "id": 1
+            }
+          }
+        },
+        "FirstClientConnectedMsg": {
+          "fields": {
+            "cli_assets": {
+              "type": "CliAssets",
+              "id": 1
+            },
+            "is_web_client": {
+              "type": "bool",
+              "id": 2
+            }
+          }
+        },
+        "AttachClientMsg": {
+          "oneofs": {
+            "_tab_position_to_focus": {
+              "oneof": [
+                "tab_position_to_focus"
+              ]
+            },
+            "_pane_to_focus": {
+              "oneof": [
+                "pane_to_focus"
+              ]
+            }
+          },
+          "fields": {
+            "cli_assets": {
+              "type": "CliAssets",
+              "id": 1
+            },
+            "tab_position_to_focus": {
+              "type": "uint32",
+              "id": 2,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "pane_to_focus": {
+              "type": "PaneReference",
+              "id": 3,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "is_web_client": {
+              "type": "bool",
+              "id": 4
+            }
+          }
+        },
+        "AttachWatcherClientMsg": {
+          "fields": {
+            "terminal_size": {
+              "type": "Size",
+              "id": 1
+            },
+            "is_web_client": {
+              "type": "bool",
+              "id": 2
+            }
+          }
+        },
+        "ActionMsg": {
+          "oneofs": {
+            "_terminal_id": {
+              "oneof": [
+                "terminal_id"
+              ]
+            },
+            "_client_id": {
+              "oneof": [
+                "client_id"
+              ]
+            }
+          },
+          "fields": {
+            "action": {
+              "type": "Action",
+              "id": 1
+            },
+            "terminal_id": {
+              "type": "uint32",
+              "id": 2,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "client_id": {
+              "type": "uint32",
+              "id": 3,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "is_cli_client": {
+              "type": "bool",
+              "id": 4
+            }
+          }
+        },
+        "KeyMsg": {
+          "fields": {
+            "key": {
+              "type": "KeyWithModifier",
+              "id": 1
+            },
+            "raw_bytes": {
+              "rule": "repeated",
+              "type": "uint32",
+              "id": 2
+            },
+            "is_kitty_keyboard_protocol": {
+              "type": "bool",
+              "id": 3
+            }
+          }
+        },
+        "ClientExitedMsg": {
+          "fields": {}
+        },
+        "KillSessionMsg": {
+          "fields": {}
+        },
+        "ConnStatusMsg": {
+          "fields": {}
+        },
+        "WebServerStartedMsg": {
+          "fields": {
+            "base_url": {
+              "type": "string",
+              "id": 1
+            }
+          }
+        },
+        "FailedToStartWebServerMsg": {
+          "fields": {
+            "error": {
+              "type": "string",
+              "id": 1
+            }
+          }
+        },
+        "SubscribeToPaneRendersMsg": {
+          "oneofs": {
+            "_scrollback": {
+              "oneof": [
+                "scrollback"
+              ]
+            }
+          },
+          "fields": {
+            "pane_ids": {
+              "rule": "repeated",
+              "type": "PaneId",
+              "id": 1
+            },
+            "scrollback": {
+              "type": "uint32",
+              "id": 2,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "ansi": {
+              "type": "bool",
+              "id": 3
+            }
+          }
+        },
+        "DesktopNotificationResponseMsg": {
+          "fields": {
+            "raw_bytes": {
+              "type": "bytes",
+              "id": 1
+            }
+          }
+        },
+        "Size": {
+          "fields": {
+            "cols": {
+              "type": "uint32",
+              "id": 1
+            },
+            "rows": {
+              "type": "uint32",
+              "id": 2
+            }
+          }
+        },
+        "PixelDimensions": {
+          "oneofs": {
+            "_text_area_size": {
+              "oneof": [
+                "text_area_size"
+              ]
+            },
+            "_character_cell_size": {
+              "oneof": [
+                "character_cell_size"
+              ]
+            }
+          },
+          "fields": {
+            "text_area_size": {
+              "type": "SizeInPixels",
+              "id": 1,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "character_cell_size": {
+              "type": "SizeInPixels",
+              "id": 2,
+              "options": {
+                "proto3_optional": true
+              }
+            }
+          }
+        },
+        "SizeInPixels": {
+          "fields": {
+            "width": {
+              "type": "uint32",
+              "id": 1
+            },
+            "height": {
+              "type": "uint32",
+              "id": 2
+            }
+          }
+        },
+        "PaneReference": {
+          "fields": {
+            "pane_id": {
+              "type": "uint32",
+              "id": 1
+            },
+            "is_plugin": {
+              "type": "bool",
+              "id": 2
+            }
+          }
+        },
+        "ColorRegister": {
+          "fields": {
+            "index": {
+              "type": "uint32",
+              "id": 1
+            },
+            "color": {
+              "type": "string",
+              "id": 2
+            }
+          }
+        },
+        "KeyWithModifier": {
+          "oneofs": {
+            "_character": {
+              "oneof": [
+                "character"
+              ]
+            }
+          },
+          "fields": {
+            "bare_key": {
+              "type": "BareKey",
+              "id": 1
+            },
+            "key_modifiers": {
+              "rule": "repeated",
+              "type": "KeyModifier",
+              "id": 2
+            },
+            "character": {
+              "type": "string",
+              "id": 3,
+              "options": {
+                "proto3_optional": true
+              }
+            }
+          }
+        },
+        "BareKey": {
+          "values": {
+            "BARE_KEY_UNSPECIFIED": 0,
+            "BARE_KEY_PAGE_DOWN": 1,
+            "BARE_KEY_PAGE_UP": 2,
+            "BARE_KEY_LEFT": 3,
+            "BARE_KEY_DOWN": 4,
+            "BARE_KEY_UP": 5,
+            "BARE_KEY_RIGHT": 6,
+            "BARE_KEY_HOME": 7,
+            "BARE_KEY_END": 8,
+            "BARE_KEY_BACKSPACE": 9,
+            "BARE_KEY_DELETE": 10,
+            "BARE_KEY_INSERT": 11,
+            "BARE_KEY_F1": 12,
+            "BARE_KEY_F2": 13,
+            "BARE_KEY_F3": 14,
+            "BARE_KEY_F4": 15,
+            "BARE_KEY_F5": 16,
+            "BARE_KEY_F6": 17,
+            "BARE_KEY_F7": 18,
+            "BARE_KEY_F8": 19,
+            "BARE_KEY_F9": 20,
+            "BARE_KEY_F10": 21,
+            "BARE_KEY_F11": 22,
+            "BARE_KEY_F12": 23,
+            "BARE_KEY_CHAR": 24,
+            "BARE_KEY_TAB": 25,
+            "BARE_KEY_ESC": 26,
+            "BARE_KEY_ENTER": 27,
+            "BARE_KEY_CAPS_LOCK": 28,
+            "BARE_KEY_SCROLL_LOCK": 29,
+            "BARE_KEY_NUM_LOCK": 30,
+            "BARE_KEY_PRINT_SCREEN": 31,
+            "BARE_KEY_PAUSE": 32,
+            "BARE_KEY_MENU": 33
+          }
+        },
+        "CharKey": {
+          "fields": {
+            "character": {
+              "type": "string",
+              "id": 1
+            }
+          }
+        },
+        "FunctionKey": {
+          "fields": {
+            "function_number": {
+              "type": "uint32",
+              "id": 1
+            }
+          }
+        },
+        "KeyModifier": {
+          "values": {
+            "KEY_MODIFIER_UNSPECIFIED": 0,
+            "KEY_MODIFIER_CTRL": 1,
+            "KEY_MODIFIER_ALT": 2,
+            "KEY_MODIFIER_SHIFT": 3,
+            "KEY_MODIFIER_SUPER": 4
+          }
+        },
+        "Style": {
+          "fields": {
+            "colors": {
+              "type": "Styling",
+              "id": 1
+            },
+            "rounded_corners": {
+              "type": "bool",
+              "id": 2
+            },
+            "hide_session_name": {
+              "type": "bool",
+              "id": 3
+            }
+          }
+        },
+        "Styling": {
+          "fields": {
+            "base": {
+              "type": "PaletteColor",
+              "id": 1
+            },
+            "background": {
+              "type": "PaletteColor",
+              "id": 2
+            },
+            "emphasis_0": {
+              "type": "PaletteColor",
+              "id": 3
+            },
+            "emphasis_1": {
+              "type": "PaletteColor",
+              "id": 4
+            },
+            "emphasis_2": {
+              "type": "PaletteColor",
+              "id": 5
+            },
+            "emphasis_3": {
+              "type": "PaletteColor",
+              "id": 6
+            }
+          }
+        },
+        "PaletteColor": {
+          "oneofs": {
+            "color_type": {
+              "oneof": [
+                "rgb",
+                "eight_bit",
+                "ansi"
+              ]
+            }
+          },
+          "fields": {
+            "rgb": {
+              "type": "RgbColor",
+              "id": 1
+            },
+            "eight_bit": {
+              "type": "uint32",
+              "id": 2
+            },
+            "ansi": {
+              "type": "AnsiCode",
+              "id": 3
+            }
+          }
+        },
+        "RgbColor": {
+          "fields": {
+            "r": {
+              "type": "uint32",
+              "id": 1
+            },
+            "g": {
+              "type": "uint32",
+              "id": 2
+            },
+            "b": {
+              "type": "uint32",
+              "id": 3
+            }
+          }
+        },
+        "AnsiCode": {
+          "values": {
+            "ANSI_CODE_UNSPECIFIED": 0,
+            "BLACK": 1,
+            "RED": 2,
+            "GREEN": 3,
+            "YELLOW": 4,
+            "BLUE": 5,
+            "MAGENTA": 6,
+            "CYAN": 7,
+            "WHITE": 8,
+            "BRIGHT_BLACK": 9,
+            "BRIGHT_RED": 10,
+            "BRIGHT_GREEN": 11,
+            "BRIGHT_YELLOW": 12,
+            "BRIGHT_BLUE": 13,
+            "BRIGHT_MAGENTA": 14,
+            "BRIGHT_CYAN": 15,
+            "BRIGHT_WHITE": 16
+          }
+        },
+        "Action": {
+          "oneofs": {
+            "action_type": {
+              "oneof": [
+                "quit",
+                "write",
+                "write_chars",
+                "switch_to_mode",
+                "switch_mode_for_all_clients",
+                "resize",
+                "focus_next_pane",
+                "focus_previous_pane",
+                "switch_focus",
+                "move_focus",
+                "move_focus_or_tab",
+                "move_pane",
+                "move_pane_backwards",
+                "clear_screen",
+                "dump_screen",
+                "dump_layout",
+                "edit_scrollback",
+                "scroll_up",
+                "scroll_up_at",
+                "scroll_down",
+                "scroll_down_at",
+                "scroll_to_bottom",
+                "scroll_to_top",
+                "page_scroll_up",
+                "page_scroll_down",
+                "half_page_scroll_up",
+                "half_page_scroll_down",
+                "toggle_focus_fullscreen",
+                "toggle_pane_frames",
+                "toggle_active_sync_tab",
+                "new_pane",
+                "edit_file",
+                "new_floating_pane",
+                "new_tiled_pane",
+                "new_in_place_pane",
+                "new_stacked_pane",
+                "toggle_pane_embed_or_floating",
+                "toggle_floating_panes",
+                "close_focus",
+                "pane_name_input",
+                "undo_rename_pane",
+                "new_tab",
+                "no_op",
+                "go_to_next_tab",
+                "go_to_previous_tab",
+                "close_tab",
+                "go_to_tab",
+                "go_to_tab_name",
+                "toggle_tab",
+                "tab_name_input",
+                "undo_rename_tab",
+                "move_tab",
+                "run",
+                "detach",
+                "launch_or_focus_plugin",
+                "launch_plugin",
+                "mouse_event",
+                "copy",
+                "confirm",
+                "deny",
+                "skip_confirm",
+                "search_input",
+                "search",
+                "search_toggle_option",
+                "toggle_mouse_mode",
+                "previous_swap_layout",
+                "next_swap_layout",
+                "query_tab_names",
+                "new_tiled_plugin_pane",
+                "new_floating_plugin_pane",
+                "new_in_place_plugin_pane",
+                "start_or_reload_plugin",
+                "close_terminal_pane",
+                "close_plugin_pane",
+                "focus_terminal_pane_with_id",
+                "focus_plugin_pane_with_id",
+                "rename_terminal_pane",
+                "rename_plugin_pane",
+                "rename_tab",
+                "break_pane",
+                "break_pane_right",
+                "break_pane_left",
+                "rename_session",
+                "cli_pipe",
+                "keybind_pipe",
+                "list_clients",
+                "toggle_pane_pinned",
+                "stack_panes",
+                "change_floating_pane_coordinates",
+                "toggle_pane_in_group",
+                "toggle_group_marking",
+                "switch_session",
+                "new_blocking_pane",
+                "override_layout",
+                "toggle_pane_borderless",
+                "set_pane_borderless",
+                "save_session",
+                "list_panes",
+                "write_chars_to_pane_id",
+                "write_to_pane_id",
+                "go_to_tab_by_id",
+                "close_tab_by_id",
+                "rename_tab_by_id",
+                "list_tabs",
+                "current_tab_info",
+                "show_floating_panes",
+                "hide_floating_panes",
+                "set_pane_color",
+                "paste",
+                "scroll_up_by_pane_id",
+                "scroll_down_by_pane_id",
+                "scroll_to_top_by_pane_id",
+                "scroll_to_bottom_by_pane_id",
+                "page_scroll_up_by_pane_id",
+                "page_scroll_down_by_pane_id",
+                "half_page_scroll_up_by_pane_id",
+                "half_page_scroll_down_by_pane_id",
+                "resize_by_pane_id",
+                "move_pane_by_pane_id",
+                "move_pane_backwards_by_pane_id",
+                "clear_screen_by_pane_id",
+                "edit_scrollback_by_pane_id",
+                "toggle_fullscreen_by_pane_id",
+                "toggle_pane_embed_or_floating_by_pane_id",
+                "close_focus_by_pane_id",
+                "rename_pane_by_pane_id",
+                "undo_rename_pane_by_pane_id",
+                "toggle_pane_pinned_by_pane_id",
+                "undo_rename_tab_by_tab_id",
+                "toggle_active_sync_tab_by_tab_id",
+                "toggle_floating_panes_by_tab_id",
+                "previous_swap_layout_by_tab_id",
+                "next_swap_layout_by_tab_id",
+                "move_tab_by_tab_id",
+                "focus_pane_by_pane_id",
+                "are_floating_panes_visible"
+              ]
+            }
+          },
+          "fields": {
+            "quit": {
+              "type": "QuitAction",
+              "id": 1
+            },
+            "write": {
+              "type": "WriteAction",
+              "id": 2
+            },
+            "write_chars": {
+              "type": "WriteCharsAction",
+              "id": 3
+            },
+            "switch_to_mode": {
+              "type": "SwitchToModeAction",
+              "id": 4
+            },
+            "switch_mode_for_all_clients": {
+              "type": "SwitchModeForAllClientsAction",
+              "id": 5
+            },
+            "resize": {
+              "type": "ResizeAction",
+              "id": 6
+            },
+            "focus_next_pane": {
+              "type": "FocusNextPaneAction",
+              "id": 7
+            },
+            "focus_previous_pane": {
+              "type": "FocusPreviousPaneAction",
+              "id": 8
+            },
+            "switch_focus": {
+              "type": "SwitchFocusAction",
+              "id": 9
+            },
+            "move_focus": {
+              "type": "MoveFocusAction",
+              "id": 10
+            },
+            "move_focus_or_tab": {
+              "type": "MoveFocusOrTabAction",
+              "id": 11
+            },
+            "move_pane": {
+              "type": "MovePaneAction",
+              "id": 12
+            },
+            "move_pane_backwards": {
+              "type": "MovePaneBackwardsAction",
+              "id": 13
+            },
+            "clear_screen": {
+              "type": "ClearScreenAction",
+              "id": 14
+            },
+            "dump_screen": {
+              "type": "DumpScreenAction",
+              "id": 15
+            },
+            "dump_layout": {
+              "type": "DumpLayoutAction",
+              "id": 16
+            },
+            "edit_scrollback": {
+              "type": "EditScrollbackAction",
+              "id": 17
+            },
+            "scroll_up": {
+              "type": "ScrollUpAction",
+              "id": 18
+            },
+            "scroll_up_at": {
+              "type": "ScrollUpAtAction",
+              "id": 19
+            },
+            "scroll_down": {
+              "type": "ScrollDownAction",
+              "id": 20
+            },
+            "scroll_down_at": {
+              "type": "ScrollDownAtAction",
+              "id": 21
+            },
+            "scroll_to_bottom": {
+              "type": "ScrollToBottomAction",
+              "id": 22
+            },
+            "scroll_to_top": {
+              "type": "ScrollToTopAction",
+              "id": 23
+            },
+            "page_scroll_up": {
+              "type": "PageScrollUpAction",
+              "id": 24
+            },
+            "page_scroll_down": {
+              "type": "PageScrollDownAction",
+              "id": 25
+            },
+            "half_page_scroll_up": {
+              "type": "HalfPageScrollUpAction",
+              "id": 26
+            },
+            "half_page_scroll_down": {
+              "type": "HalfPageScrollDownAction",
+              "id": 27
+            },
+            "toggle_focus_fullscreen": {
+              "type": "ToggleFocusFullscreenAction",
+              "id": 28
+            },
+            "toggle_pane_frames": {
+              "type": "TogglePaneFramesAction",
+              "id": 29
+            },
+            "toggle_active_sync_tab": {
+              "type": "ToggleActiveSyncTabAction",
+              "id": 30
+            },
+            "new_pane": {
+              "type": "NewPaneAction",
+              "id": 31
+            },
+            "edit_file": {
+              "type": "EditFileAction",
+              "id": 32
+            },
+            "new_floating_pane": {
+              "type": "NewFloatingPaneAction",
+              "id": 33
+            },
+            "new_tiled_pane": {
+              "type": "NewTiledPaneAction",
+              "id": 34
+            },
+            "new_in_place_pane": {
+              "type": "NewInPlacePaneAction",
+              "id": 35
+            },
+            "new_stacked_pane": {
+              "type": "NewStackedPaneAction",
+              "id": 36
+            },
+            "toggle_pane_embed_or_floating": {
+              "type": "TogglePaneEmbedOrFloatingAction",
+              "id": 37
+            },
+            "toggle_floating_panes": {
+              "type": "ToggleFloatingPanesAction",
+              "id": 38
+            },
+            "close_focus": {
+              "type": "CloseFocusAction",
+              "id": 39
+            },
+            "pane_name_input": {
+              "type": "PaneNameInputAction",
+              "id": 40
+            },
+            "undo_rename_pane": {
+              "type": "UndoRenamePaneAction",
+              "id": 41
+            },
+            "new_tab": {
+              "type": "NewTabAction",
+              "id": 42
+            },
+            "no_op": {
+              "type": "NoOpAction",
+              "id": 43
+            },
+            "go_to_next_tab": {
+              "type": "GoToNextTabAction",
+              "id": 44
+            },
+            "go_to_previous_tab": {
+              "type": "GoToPreviousTabAction",
+              "id": 45
+            },
+            "close_tab": {
+              "type": "CloseTabAction",
+              "id": 46
+            },
+            "go_to_tab": {
+              "type": "GoToTabAction",
+              "id": 47
+            },
+            "go_to_tab_name": {
+              "type": "GoToTabNameAction",
+              "id": 48
+            },
+            "toggle_tab": {
+              "type": "ToggleTabAction",
+              "id": 49
+            },
+            "tab_name_input": {
+              "type": "TabNameInputAction",
+              "id": 50
+            },
+            "undo_rename_tab": {
+              "type": "UndoRenameTabAction",
+              "id": 51
+            },
+            "move_tab": {
+              "type": "MoveTabAction",
+              "id": 52
+            },
+            "run": {
+              "type": "RunAction",
+              "id": 53
+            },
+            "detach": {
+              "type": "DetachAction",
+              "id": 54
+            },
+            "launch_or_focus_plugin": {
+              "type": "LaunchOrFocusPluginAction",
+              "id": 55
+            },
+            "launch_plugin": {
+              "type": "LaunchPluginAction",
+              "id": 56
+            },
+            "mouse_event": {
+              "type": "MouseEventAction",
+              "id": 57
+            },
+            "copy": {
+              "type": "CopyAction",
+              "id": 58
+            },
+            "confirm": {
+              "type": "ConfirmAction",
+              "id": 59
+            },
+            "deny": {
+              "type": "DenyAction",
+              "id": 60
+            },
+            "skip_confirm": {
+              "type": "SkipConfirmAction",
+              "id": 61
+            },
+            "search_input": {
+              "type": "SearchInputAction",
+              "id": 62
+            },
+            "search": {
+              "type": "SearchAction",
+              "id": 63
+            },
+            "search_toggle_option": {
+              "type": "SearchToggleOptionAction",
+              "id": 64
+            },
+            "toggle_mouse_mode": {
+              "type": "ToggleMouseModeAction",
+              "id": 65
+            },
+            "previous_swap_layout": {
+              "type": "PreviousSwapLayoutAction",
+              "id": 66
+            },
+            "next_swap_layout": {
+              "type": "NextSwapLayoutAction",
+              "id": 67
+            },
+            "query_tab_names": {
+              "type": "QueryTabNamesAction",
+              "id": 68
+            },
+            "new_tiled_plugin_pane": {
+              "type": "NewTiledPluginPaneAction",
+              "id": 69
+            },
+            "new_floating_plugin_pane": {
+              "type": "NewFloatingPluginPaneAction",
+              "id": 70
+            },
+            "new_in_place_plugin_pane": {
+              "type": "NewInPlacePluginPaneAction",
+              "id": 71
+            },
+            "start_or_reload_plugin": {
+              "type": "StartOrReloadPluginAction",
+              "id": 72
+            },
+            "close_terminal_pane": {
+              "type": "CloseTerminalPaneAction",
+              "id": 73
+            },
+            "close_plugin_pane": {
+              "type": "ClosePluginPaneAction",
+              "id": 74
+            },
+            "focus_terminal_pane_with_id": {
+              "type": "FocusTerminalPaneWithIdAction",
+              "id": 75
+            },
+            "focus_plugin_pane_with_id": {
+              "type": "FocusPluginPaneWithIdAction",
+              "id": 76
+            },
+            "rename_terminal_pane": {
+              "type": "RenameTerminalPaneAction",
+              "id": 77
+            },
+            "rename_plugin_pane": {
+              "type": "RenamePluginPaneAction",
+              "id": 78
+            },
+            "rename_tab": {
+              "type": "RenameTabAction",
+              "id": 79
+            },
+            "break_pane": {
+              "type": "BreakPaneAction",
+              "id": 80
+            },
+            "break_pane_right": {
+              "type": "BreakPaneRightAction",
+              "id": 81
+            },
+            "break_pane_left": {
+              "type": "BreakPaneLeftAction",
+              "id": 82
+            },
+            "rename_session": {
+              "type": "RenameSessionAction",
+              "id": 83
+            },
+            "cli_pipe": {
+              "type": "CliPipeAction",
+              "id": 84
+            },
+            "keybind_pipe": {
+              "type": "KeybindPipeAction",
+              "id": 85
+            },
+            "list_clients": {
+              "type": "ListClientsAction",
+              "id": 86
+            },
+            "toggle_pane_pinned": {
+              "type": "TogglePanePinnedAction",
+              "id": 87
+            },
+            "stack_panes": {
+              "type": "StackPanesAction",
+              "id": 88
+            },
+            "change_floating_pane_coordinates": {
+              "type": "ChangeFloatingPaneCoordinatesAction",
+              "id": 89
+            },
+            "toggle_pane_in_group": {
+              "type": "TogglePaneInGroupAction",
+              "id": 90
+            },
+            "toggle_group_marking": {
+              "type": "ToggleGroupMarkingAction",
+              "id": 91
+            },
+            "switch_session": {
+              "type": "SwitchSessionAction",
+              "id": 92
+            },
+            "new_blocking_pane": {
+              "type": "NewBlockingPaneAction",
+              "id": 93
+            },
+            "override_layout": {
+              "type": "OverrideLayoutAction",
+              "id": 94
+            },
+            "toggle_pane_borderless": {
+              "type": "TogglePaneBorderlessAction",
+              "id": 95
+            },
+            "set_pane_borderless": {
+              "type": "SetPaneBorderlessAction",
+              "id": 96
+            },
+            "save_session": {
+              "type": "SaveSessionAction",
+              "id": 97
+            },
+            "list_panes": {
+              "type": "ListPanesAction",
+              "id": 98
+            },
+            "write_chars_to_pane_id": {
+              "type": "WriteCharsToPaneIdAction",
+              "id": 99
+            },
+            "write_to_pane_id": {
+              "type": "WriteToPaneIdAction",
+              "id": 100
+            },
+            "go_to_tab_by_id": {
+              "type": "GoToTabByIdAction",
+              "id": 101
+            },
+            "close_tab_by_id": {
+              "type": "CloseTabByIdAction",
+              "id": 102
+            },
+            "rename_tab_by_id": {
+              "type": "RenameTabByIdAction",
+              "id": 103
+            },
+            "list_tabs": {
+              "type": "ListTabsAction",
+              "id": 104
+            },
+            "current_tab_info": {
+              "type": "CurrentTabInfoAction",
+              "id": 105
+            },
+            "show_floating_panes": {
+              "type": "ShowFloatingPanesAction",
+              "id": 106
+            },
+            "hide_floating_panes": {
+              "type": "HideFloatingPanesAction",
+              "id": 107
+            },
+            "set_pane_color": {
+              "type": "SetPaneColorAction",
+              "id": 108
+            },
+            "paste": {
+              "type": "PasteAction",
+              "id": 109
+            },
+            "scroll_up_by_pane_id": {
+              "type": "ScrollUpByPaneIdAction",
+              "id": 110
+            },
+            "scroll_down_by_pane_id": {
+              "type": "ScrollDownByPaneIdAction",
+              "id": 111
+            },
+            "scroll_to_top_by_pane_id": {
+              "type": "ScrollToTopByPaneIdAction",
+              "id": 112
+            },
+            "scroll_to_bottom_by_pane_id": {
+              "type": "ScrollToBottomByPaneIdAction",
+              "id": 113
+            },
+            "page_scroll_up_by_pane_id": {
+              "type": "PageScrollUpByPaneIdAction",
+              "id": 114
+            },
+            "page_scroll_down_by_pane_id": {
+              "type": "PageScrollDownByPaneIdAction",
+              "id": 115
+            },
+            "half_page_scroll_up_by_pane_id": {
+              "type": "HalfPageScrollUpByPaneIdAction",
+              "id": 116
+            },
+            "half_page_scroll_down_by_pane_id": {
+              "type": "HalfPageScrollDownByPaneIdAction",
+              "id": 117
+            },
+            "resize_by_pane_id": {
+              "type": "ResizeByPaneIdAction",
+              "id": 118
+            },
+            "move_pane_by_pane_id": {
+              "type": "MovePaneByPaneIdAction",
+              "id": 119
+            },
+            "move_pane_backwards_by_pane_id": {
+              "type": "MovePaneBackwardsByPaneIdAction",
+              "id": 120
+            },
+            "clear_screen_by_pane_id": {
+              "type": "ClearScreenByPaneIdAction",
+              "id": 121
+            },
+            "edit_scrollback_by_pane_id": {
+              "type": "EditScrollbackByPaneIdAction",
+              "id": 122
+            },
+            "toggle_fullscreen_by_pane_id": {
+              "type": "ToggleFullscreenByPaneIdAction",
+              "id": 123
+            },
+            "toggle_pane_embed_or_floating_by_pane_id": {
+              "type": "TogglePaneEmbedOrFloatingByPaneIdAction",
+              "id": 124
+            },
+            "close_focus_by_pane_id": {
+              "type": "CloseFocusByPaneIdAction",
+              "id": 125
+            },
+            "rename_pane_by_pane_id": {
+              "type": "RenamePaneByPaneIdAction",
+              "id": 126
+            },
+            "undo_rename_pane_by_pane_id": {
+              "type": "UndoRenamePaneByPaneIdAction",
+              "id": 127
+            },
+            "toggle_pane_pinned_by_pane_id": {
+              "type": "TogglePanePinnedByPaneIdAction",
+              "id": 128
+            },
+            "undo_rename_tab_by_tab_id": {
+              "type": "UndoRenameTabByTabIdAction",
+              "id": 129
+            },
+            "toggle_active_sync_tab_by_tab_id": {
+              "type": "ToggleActiveSyncTabByTabIdAction",
+              "id": 130
+            },
+            "toggle_floating_panes_by_tab_id": {
+              "type": "ToggleFloatingPanesByTabIdAction",
+              "id": 131
+            },
+            "previous_swap_layout_by_tab_id": {
+              "type": "PreviousSwapLayoutByTabIdAction",
+              "id": 132
+            },
+            "next_swap_layout_by_tab_id": {
+              "type": "NextSwapLayoutByTabIdAction",
+              "id": 133
+            },
+            "move_tab_by_tab_id": {
+              "type": "MoveTabByTabIdAction",
+              "id": 134
+            },
+            "focus_pane_by_pane_id": {
+              "type": "FocusPaneByPaneIdAction",
+              "id": 135
+            },
+            "are_floating_panes_visible": {
+              "type": "AreFloatingPanesVisibleAction",
+              "id": 136
+            }
+          }
+        },
+        "QuitAction": {
+          "fields": {}
+        },
+        "FocusNextPaneAction": {
+          "fields": {}
+        },
+        "FocusPreviousPaneAction": {
+          "fields": {}
+        },
+        "SwitchFocusAction": {
+          "fields": {}
+        },
+        "MovePaneBackwardsAction": {
+          "fields": {}
+        },
+        "ClearScreenAction": {
+          "fields": {}
+        },
+        "DumpLayoutAction": {
+          "fields": {}
+        },
+        "SaveSessionAction": {
+          "fields": {}
+        },
+        "EditScrollbackAction": {
+          "fields": {
+            "ansi": {
+              "type": "bool",
+              "id": 1
+            }
+          }
+        },
+        "ScrollUpAction": {
+          "fields": {}
+        },
+        "ScrollDownAction": {
+          "fields": {}
+        },
+        "ScrollToBottomAction": {
+          "fields": {}
+        },
+        "ScrollToTopAction": {
+          "fields": {}
+        },
+        "PageScrollUpAction": {
+          "fields": {}
+        },
+        "PageScrollDownAction": {
+          "fields": {}
+        },
+        "HalfPageScrollUpAction": {
+          "fields": {}
+        },
+        "HalfPageScrollDownAction": {
+          "fields": {}
+        },
+        "ToggleFocusFullscreenAction": {
+          "fields": {}
+        },
+        "TogglePaneFramesAction": {
+          "fields": {}
+        },
+        "ToggleActiveSyncTabAction": {
+          "fields": {}
+        },
+        "TogglePaneEmbedOrFloatingAction": {
+          "fields": {}
+        },
+        "ToggleFloatingPanesAction": {
+          "fields": {}
+        },
+        "ShowFloatingPanesAction": {
+          "oneofs": {
+            "_tab_id": {
+              "oneof": [
+                "tab_id"
+              ]
+            }
+          },
+          "fields": {
+            "tab_id": {
+              "type": "uint32",
+              "id": 1,
+              "options": {
+                "proto3_optional": true
+              }
+            }
+          }
+        },
+        "HideFloatingPanesAction": {
+          "oneofs": {
+            "_tab_id": {
+              "oneof": [
+                "tab_id"
+              ]
+            }
+          },
+          "fields": {
+            "tab_id": {
+              "type": "uint32",
+              "id": 1,
+              "options": {
+                "proto3_optional": true
+              }
+            }
+          }
+        },
+        "AreFloatingPanesVisibleAction": {
+          "oneofs": {
+            "_tab_id": {
+              "oneof": [
+                "tab_id"
+              ]
+            }
+          },
+          "fields": {
+            "tab_id": {
+              "type": "uint32",
+              "id": 1,
+              "options": {
+                "proto3_optional": true
+              }
+            }
+          }
+        },
+        "CloseFocusAction": {
+          "fields": {}
+        },
+        "UndoRenamePaneAction": {
+          "fields": {}
+        },
+        "NoOpAction": {
+          "fields": {}
+        },
+        "GoToNextTabAction": {
+          "fields": {}
+        },
+        "GoToPreviousTabAction": {
+          "fields": {}
+        },
+        "CloseTabAction": {
+          "fields": {}
+        },
+        "ToggleTabAction": {
+          "fields": {}
+        },
+        "UndoRenameTabAction": {
+          "fields": {}
+        },
+        "DetachAction": {
+          "fields": {}
+        },
+        "CopyAction": {
+          "fields": {}
+        },
+        "ConfirmAction": {
+          "fields": {}
+        },
+        "DenyAction": {
+          "fields": {}
+        },
+        "ToggleMouseModeAction": {
+          "fields": {}
+        },
+        "PreviousSwapLayoutAction": {
+          "fields": {}
+        },
+        "NextSwapLayoutAction": {
+          "fields": {}
+        },
+        "TabLayoutInfo": {
+          "oneofs": {
+            "_tab_name": {
+              "oneof": [
+                "tab_name"
+              ]
+            }
+          },
+          "fields": {
+            "tab_index": {
+              "type": "uint32",
+              "id": 1
+            },
+            "tab_name": {
+              "type": "string",
+              "id": 2,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "tiled_layout": {
+              "type": "TiledPaneLayout",
+              "id": 3
+            },
+            "floating_layouts": {
+              "rule": "repeated",
+              "type": "FloatingPaneLayout",
+              "id": 4
+            },
+            "swap_tiled_layouts": {
+              "rule": "repeated",
+              "type": "SwapTiledLayout",
+              "id": 5
+            },
+            "swap_floating_layouts": {
+              "rule": "repeated",
+              "type": "SwapFloatingLayout",
+              "id": 6
+            }
+          }
+        },
+        "OverrideLayoutAction": {
+          "fields": {
+            "tabs": {
+              "rule": "repeated",
+              "type": "TabLayoutInfo",
+              "id": 1
+            },
+            "retain_existing_terminal_panes": {
+              "type": "bool",
+              "id": 2
+            },
+            "retain_existing_plugin_panes": {
+              "type": "bool",
+              "id": 3
+            },
+            "apply_only_to_active_tab": {
+              "type": "bool",
+              "id": 4
+            }
+          }
+        },
+        "QueryTabNamesAction": {
+          "fields": {}
+        },
+        "BreakPaneAction": {
+          "fields": {}
+        },
+        "BreakPaneRightAction": {
+          "fields": {}
+        },
+        "BreakPaneLeftAction": {
+          "fields": {}
+        },
+        "ListClientsAction": {
+          "fields": {}
+        },
+        "ListPanesAction": {
+          "fields": {
+            "show_tab": {
+              "type": "bool",
+              "id": 1
+            },
+            "show_command": {
+              "type": "bool",
+              "id": 2
+            },
+            "show_state": {
+              "type": "bool",
+              "id": 3
+            },
+            "show_geometry": {
+              "type": "bool",
+              "id": 4
+            },
+            "show_all": {
+              "type": "bool",
+              "id": 5
+            },
+            "output_json": {
+              "type": "bool",
+              "id": 6
+            }
+          }
+        },
+        "ListTabsAction": {
+          "fields": {
+            "show_state": {
+              "type": "bool",
+              "id": 1
+            },
+            "show_dimensions": {
+              "type": "bool",
+              "id": 2
+            },
+            "show_panes": {
+              "type": "bool",
+              "id": 3
+            },
+            "show_layout": {
+              "type": "bool",
+              "id": 4
+            },
+            "show_all": {
+              "type": "bool",
+              "id": 5
+            },
+            "output_json": {
+              "type": "bool",
+              "id": 6
+            }
+          }
+        },
+        "CurrentTabInfoAction": {
+          "fields": {
+            "output_json": {
+              "type": "bool",
+              "id": 1
+            }
+          }
+        },
+        "TogglePanePinnedAction": {
+          "fields": {}
+        },
+        "TogglePaneInGroupAction": {
+          "fields": {}
+        },
+        "ToggleGroupMarkingAction": {
+          "fields": {}
+        },
+        "WriteAction": {
+          "oneofs": {
+            "_key_with_modifier": {
+              "oneof": [
+                "key_with_modifier"
+              ]
+            }
+          },
+          "fields": {
+            "key_with_modifier": {
+              "type": "KeyWithModifier",
+              "id": 1,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "bytes": {
+              "rule": "repeated",
+              "type": "uint32",
+              "id": 2
+            },
+            "is_kitty_keyboard_protocol": {
+              "type": "bool",
+              "id": 3
+            }
+          }
+        },
+        "WriteCharsAction": {
+          "fields": {
+            "chars": {
+              "type": "string",
+              "id": 1
+            }
+          }
+        },
+        "WriteToPaneIdAction": {
+          "fields": {
+            "pane_id": {
+              "type": "PaneId",
+              "id": 1
+            },
+            "bytes": {
+              "rule": "repeated",
+              "type": "uint32",
+              "id": 2
+            }
+          }
+        },
+        "WriteCharsToPaneIdAction": {
+          "fields": {
+            "pane_id": {
+              "type": "PaneId",
+              "id": 1
+            },
+            "chars": {
+              "type": "string",
+              "id": 2
+            }
+          }
+        },
+        "PasteAction": {
+          "oneofs": {
+            "_pane_id": {
+              "oneof": [
+                "pane_id"
+              ]
+            }
+          },
+          "fields": {
+            "chars": {
+              "type": "string",
+              "id": 1
+            },
+            "pane_id": {
+              "type": "PaneId",
+              "id": 2,
+              "options": {
+                "proto3_optional": true
+              }
+            }
+          }
+        },
+        "SwitchToModeAction": {
+          "fields": {
+            "input_mode": {
+              "type": "InputMode",
+              "id": 1
+            }
+          }
+        },
+        "SwitchModeForAllClientsAction": {
+          "fields": {
+            "input_mode": {
+              "type": "InputMode",
+              "id": 1
+            }
+          }
+        },
+        "ResizeAction": {
+          "oneofs": {
+            "_direction": {
+              "oneof": [
+                "direction"
+              ]
+            }
+          },
+          "fields": {
+            "resize": {
+              "type": "ResizeType",
+              "id": 1
+            },
+            "direction": {
+              "type": "Direction",
+              "id": 2,
+              "options": {
+                "proto3_optional": true
+              }
+            }
+          }
+        },
+        "MoveFocusAction": {
+          "fields": {
+            "direction": {
+              "type": "Direction",
+              "id": 1
+            }
+          }
+        },
+        "MoveFocusOrTabAction": {
+          "fields": {
+            "direction": {
+              "type": "Direction",
+              "id": 1
+            }
+          }
+        },
+        "MovePaneAction": {
+          "oneofs": {
+            "_direction": {
+              "oneof": [
+                "direction"
+              ]
+            }
+          },
+          "fields": {
+            "direction": {
+              "type": "Direction",
+              "id": 1,
+              "options": {
+                "proto3_optional": true
+              }
+            }
+          }
+        },
+        "DumpScreenAction": {
+          "oneofs": {
+            "_pane_id": {
+              "oneof": [
+                "pane_id"
+              ]
+            }
+          },
+          "fields": {
+            "file_path": {
+              "type": "string",
+              "id": 1
+            },
+            "include_scrollback": {
+              "type": "bool",
+              "id": 2
+            },
+            "pane_id": {
+              "type": "PaneId",
+              "id": 3,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "dump_to_stdout": {
+              "type": "bool",
+              "id": 4
+            },
+            "ansi": {
+              "type": "bool",
+              "id": 5
+            }
+          }
+        },
+        "ScrollUpAtAction": {
+          "fields": {
+            "position": {
+              "type": "Position",
+              "id": 1
+            }
+          }
+        },
+        "ScrollDownAtAction": {
+          "fields": {
+            "position": {
+              "type": "Position",
+              "id": 1
+            }
+          }
+        },
+        "NewPaneAction": {
+          "oneofs": {
+            "_direction": {
+              "oneof": [
+                "direction"
+              ]
+            },
+            "_pane_name": {
+              "oneof": [
+                "pane_name"
+              ]
+            }
+          },
+          "fields": {
+            "direction": {
+              "type": "Direction",
+              "id": 1,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "pane_name": {
+              "type": "string",
+              "id": 2,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "start_suppressed": {
+              "type": "bool",
+              "id": 3
+            },
+            "near_current_pane": {
+              "type": "bool",
+              "id": 4
+            }
+          }
+        },
+        "EditFileAction": {
+          "oneofs": {
+            "_direction": {
+              "oneof": [
+                "direction"
+              ]
+            },
+            "_coordinates": {
+              "oneof": [
+                "coordinates"
+              ]
+            },
+            "_tab_id": {
+              "oneof": [
+                "tab_id"
+              ]
+            }
+          },
+          "fields": {
+            "payload": {
+              "type": "OpenFilePayload",
+              "id": 1
+            },
+            "direction": {
+              "type": "Direction",
+              "id": 2,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "floating": {
+              "type": "bool",
+              "id": 3
+            },
+            "in_place": {
+              "type": "bool",
+              "id": 4
+            },
+            "start_suppressed": {
+              "type": "bool",
+              "id": 5
+            },
+            "coordinates": {
+              "type": "FloatingPaneCoordinates",
+              "id": 6,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "near_current_pane": {
+              "type": "bool",
+              "id": 7
+            },
+            "close_replaced_pane": {
+              "type": "bool",
+              "id": 8
+            },
+            "tab_id": {
+              "type": "uint32",
+              "id": 9,
+              "options": {
+                "proto3_optional": true
+              }
+            }
+          }
+        },
+        "NewFloatingPaneAction": {
+          "oneofs": {
+            "_command": {
+              "oneof": [
+                "command"
+              ]
+            },
+            "_pane_name": {
+              "oneof": [
+                "pane_name"
+              ]
+            },
+            "_coordinates": {
+              "oneof": [
+                "coordinates"
+              ]
+            },
+            "_tab_id": {
+              "oneof": [
+                "tab_id"
+              ]
+            }
+          },
+          "fields": {
+            "command": {
+              "type": "RunCommandAction",
+              "id": 1,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "pane_name": {
+              "type": "string",
+              "id": 2,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "coordinates": {
+              "type": "FloatingPaneCoordinates",
+              "id": 3,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "near_current_pane": {
+              "type": "bool",
+              "id": 7
+            },
+            "tab_id": {
+              "type": "uint32",
+              "id": 8,
+              "options": {
+                "proto3_optional": true
+              }
+            }
+          }
+        },
+        "NewTiledPaneAction": {
+          "oneofs": {
+            "_direction": {
+              "oneof": [
+                "direction"
+              ]
+            },
+            "_command": {
+              "oneof": [
+                "command"
+              ]
+            },
+            "_pane_name": {
+              "oneof": [
+                "pane_name"
+              ]
+            },
+            "_borderless": {
+              "oneof": [
+                "borderless"
+              ]
+            },
+            "_tab_id": {
+              "oneof": [
+                "tab_id"
+              ]
+            }
+          },
+          "fields": {
+            "direction": {
+              "type": "Direction",
+              "id": 1,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "command": {
+              "type": "RunCommandAction",
+              "id": 2,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "pane_name": {
+              "type": "string",
+              "id": 3,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "near_current_pane": {
+              "type": "bool",
+              "id": 7
+            },
+            "borderless": {
+              "type": "bool",
+              "id": 8,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "tab_id": {
+              "type": "uint32",
+              "id": 9,
+              "options": {
+                "proto3_optional": true
+              }
+            }
+          }
+        },
+        "NewInPlacePaneAction": {
+          "oneofs": {
+            "_command": {
+              "oneof": [
+                "command"
+              ]
+            },
+            "_pane_name": {
+              "oneof": [
+                "pane_name"
+              ]
+            },
+            "_pane_id_to_replace": {
+              "oneof": [
+                "pane_id_to_replace"
+              ]
+            },
+            "_tab_id": {
+              "oneof": [
+                "tab_id"
+              ]
+            }
+          },
+          "fields": {
+            "command": {
+              "type": "RunCommandAction",
+              "id": 1,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "pane_name": {
+              "type": "string",
+              "id": 2,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "near_current_pane": {
+              "type": "bool",
+              "id": 3
+            },
+            "pane_id_to_replace": {
+              "type": "PaneId",
+              "id": 4,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "close_replaced_pane": {
+              "type": "bool",
+              "id": 5
+            },
+            "tab_id": {
+              "type": "uint32",
+              "id": 6,
+              "options": {
+                "proto3_optional": true
+              }
+            }
+          }
+        },
+        "NewStackedPaneAction": {
+          "oneofs": {
+            "_command": {
+              "oneof": [
+                "command"
+              ]
+            },
+            "_pane_name": {
+              "oneof": [
+                "pane_name"
+              ]
+            },
+            "_tab_id": {
+              "oneof": [
+                "tab_id"
+              ]
+            }
+          },
+          "fields": {
+            "command": {
+              "type": "RunCommandAction",
+              "id": 1,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "pane_name": {
+              "type": "string",
+              "id": 2,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "near_current_pane": {
+              "type": "bool",
+              "id": 3
+            },
+            "tab_id": {
+              "type": "uint32",
+              "id": 4,
+              "options": {
+                "proto3_optional": true
+              }
+            }
+          }
+        },
+        "NewBlockingPaneAction": {
+          "oneofs": {
+            "_pane_name": {
+              "oneof": [
+                "pane_name"
+              ]
+            },
+            "_command": {
+              "oneof": [
+                "command"
+              ]
+            },
+            "_unblock_condition": {
+              "oneof": [
+                "unblock_condition"
+              ]
+            },
+            "_tab_id": {
+              "oneof": [
+                "tab_id"
+              ]
+            }
+          },
+          "fields": {
+            "placement": {
+              "type": "NewPanePlacement",
+              "id": 1
+            },
+            "pane_name": {
+              "type": "string",
+              "id": 2,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "command": {
+              "type": "RunCommandAction",
+              "id": 3,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "unblock_condition": {
+              "type": "UnblockCondition",
+              "id": 4,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "near_current_pane": {
+              "type": "bool",
+              "id": 5
+            },
+            "tab_id": {
+              "type": "uint32",
+              "id": 6,
+              "options": {
+                "proto3_optional": true
+              }
+            }
+          }
+        },
+        "PaneNameInputAction": {
+          "fields": {
+            "input": {
+              "rule": "repeated",
+              "type": "uint32",
+              "id": 1
+            }
+          }
+        },
+        "NewTabAction": {
+          "oneofs": {
+            "_tiled_layout": {
+              "oneof": [
+                "tiled_layout"
+              ]
+            },
+            "_tab_name": {
+              "oneof": [
+                "tab_name"
+              ]
+            },
+            "_cwd": {
+              "oneof": [
+                "cwd"
+              ]
+            },
+            "_first_pane_unblock_condition": {
+              "oneof": [
+                "first_pane_unblock_condition"
+              ]
+            }
+          },
+          "fields": {
+            "tiled_layout": {
+              "type": "TiledPaneLayout",
+              "id": 1,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "floating_layouts": {
+              "rule": "repeated",
+              "type": "FloatingPaneLayout",
+              "id": 2
+            },
+            "swap_tiled_layouts": {
+              "rule": "repeated",
+              "type": "SwapTiledLayout",
+              "id": 3
+            },
+            "swap_floating_layouts": {
+              "rule": "repeated",
+              "type": "SwapFloatingLayout",
+              "id": 4
+            },
+            "tab_name": {
+              "type": "string",
+              "id": 5,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "should_change_focus_to_new_tab": {
+              "type": "bool",
+              "id": 6
+            },
+            "cwd": {
+              "type": "string",
+              "id": 7,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "initial_panes": {
+              "rule": "repeated",
+              "type": "CommandOrPlugin",
+              "id": 8
+            },
+            "first_pane_unblock_condition": {
+              "type": "UnblockCondition",
+              "id": 9,
+              "options": {
+                "proto3_optional": true
+              }
+            }
+          }
+        },
+        "GoToTabAction": {
+          "fields": {
+            "index": {
+              "type": "uint32",
+              "id": 1
+            }
+          }
+        },
+        "GoToTabNameAction": {
+          "fields": {
+            "name": {
+              "type": "string",
+              "id": 1
+            },
+            "create": {
+              "type": "bool",
+              "id": 2
+            }
+          }
+        },
+        "TabNameInputAction": {
+          "fields": {
+            "input": {
+              "rule": "repeated",
+              "type": "uint32",
+              "id": 1
+            }
+          }
+        },
+        "MoveTabAction": {
+          "fields": {
+            "direction": {
+              "type": "Direction",
+              "id": 1
+            }
+          }
+        },
+        "RunAction": {
+          "fields": {
+            "command": {
+              "type": "RunCommandAction",
+              "id": 1
+            },
+            "near_current_pane": {
+              "type": "bool",
+              "id": 2
+            }
+          }
+        },
+        "LaunchOrFocusPluginAction": {
+          "oneofs": {
+            "_tab_id": {
+              "oneof": [
+                "tab_id"
+              ]
+            }
+          },
+          "fields": {
+            "plugin": {
+              "type": "RunPluginOrAlias",
+              "id": 1
+            },
+            "should_float": {
+              "type": "bool",
+              "id": 2
+            },
+            "move_to_focused_tab": {
+              "type": "bool",
+              "id": 3
+            },
+            "should_open_in_place": {
+              "type": "bool",
+              "id": 4
+            },
+            "skip_cache": {
+              "type": "bool",
+              "id": 5
+            },
+            "close_replaced_pane": {
+              "type": "bool",
+              "id": 6
+            },
+            "tab_id": {
+              "type": "uint32",
+              "id": 7,
+              "options": {
+                "proto3_optional": true
+              }
+            }
+          }
+        },
+        "LaunchPluginAction": {
+          "oneofs": {
+            "_cwd": {
+              "oneof": [
+                "cwd"
+              ]
+            },
+            "_tab_id": {
+              "oneof": [
+                "tab_id"
+              ]
+            }
+          },
+          "fields": {
+            "plugin": {
+              "type": "RunPluginOrAlias",
+              "id": 1
+            },
+            "should_float": {
+              "type": "bool",
+              "id": 2
+            },
+            "should_open_in_place": {
+              "type": "bool",
+              "id": 3
+            },
+            "skip_cache": {
+              "type": "bool",
+              "id": 4
+            },
+            "cwd": {
+              "type": "string",
+              "id": 5,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "close_replaced_pane": {
+              "type": "bool",
+              "id": 6
+            },
+            "tab_id": {
+              "type": "uint32",
+              "id": 7,
+              "options": {
+                "proto3_optional": true
+              }
+            }
+          }
+        },
+        "MouseEventAction": {
+          "fields": {
+            "event": {
+              "type": "MouseEvent",
+              "id": 1
+            }
+          }
+        },
+        "SkipConfirmAction": {
+          "fields": {
+            "action": {
+              "type": "Action",
+              "id": 1
+            }
+          }
+        },
+        "SearchInputAction": {
+          "fields": {
+            "input": {
+              "rule": "repeated",
+              "type": "uint32",
+              "id": 1
+            }
+          }
+        },
+        "SearchAction": {
+          "fields": {
+            "direction": {
+              "type": "SearchDirection",
+              "id": 1
+            }
+          }
+        },
+        "SearchToggleOptionAction": {
+          "fields": {
+            "option": {
+              "type": "SearchOption",
+              "id": 1
+            }
+          }
+        },
+        "NewTiledPluginPaneAction": {
+          "oneofs": {
+            "_pane_name": {
+              "oneof": [
+                "pane_name"
+              ]
+            },
+            "_cwd": {
+              "oneof": [
+                "cwd"
+              ]
+            },
+            "_tab_id": {
+              "oneof": [
+                "tab_id"
+              ]
+            }
+          },
+          "fields": {
+            "plugin": {
+              "type": "RunPluginOrAlias",
+              "id": 1
+            },
+            "pane_name": {
+              "type": "string",
+              "id": 2,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "skip_cache": {
+              "type": "bool",
+              "id": 3
+            },
+            "cwd": {
+              "type": "string",
+              "id": 4,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "tab_id": {
+              "type": "uint32",
+              "id": 5,
+              "options": {
+                "proto3_optional": true
+              }
+            }
+          }
+        },
+        "NewFloatingPluginPaneAction": {
+          "oneofs": {
+            "_pane_name": {
+              "oneof": [
+                "pane_name"
+              ]
+            },
+            "_cwd": {
+              "oneof": [
+                "cwd"
+              ]
+            },
+            "_coordinates": {
+              "oneof": [
+                "coordinates"
+              ]
+            },
+            "_tab_id": {
+              "oneof": [
+                "tab_id"
+              ]
+            }
+          },
+          "fields": {
+            "plugin": {
+              "type": "RunPluginOrAlias",
+              "id": 1
+            },
+            "pane_name": {
+              "type": "string",
+              "id": 2,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "skip_cache": {
+              "type": "bool",
+              "id": 3
+            },
+            "cwd": {
+              "type": "string",
+              "id": 4,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "coordinates": {
+              "type": "FloatingPaneCoordinates",
+              "id": 5,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "tab_id": {
+              "type": "uint32",
+              "id": 6,
+              "options": {
+                "proto3_optional": true
+              }
+            }
+          }
+        },
+        "NewInPlacePluginPaneAction": {
+          "oneofs": {
+            "_pane_name": {
+              "oneof": [
+                "pane_name"
+              ]
+            },
+            "_tab_id": {
+              "oneof": [
+                "tab_id"
+              ]
+            }
+          },
+          "fields": {
+            "plugin": {
+              "type": "RunPluginOrAlias",
+              "id": 1
+            },
+            "pane_name": {
+              "type": "string",
+              "id": 2,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "skip_cache": {
+              "type": "bool",
+              "id": 3
+            },
+            "close_replaced_pane": {
+              "type": "bool",
+              "id": 4
+            },
+            "tab_id": {
+              "type": "uint32",
+              "id": 5,
+              "options": {
+                "proto3_optional": true
+              }
+            }
+          }
+        },
+        "StartOrReloadPluginAction": {
+          "fields": {
+            "plugin": {
+              "type": "RunPluginOrAlias",
+              "id": 1
+            }
+          }
+        },
+        "CloseTerminalPaneAction": {
+          "fields": {
+            "pane_id": {
+              "type": "uint32",
+              "id": 1
+            }
+          }
+        },
+        "ClosePluginPaneAction": {
+          "fields": {
+            "pane_id": {
+              "type": "uint32",
+              "id": 1
+            }
+          }
+        },
+        "FocusTerminalPaneWithIdAction": {
+          "fields": {
+            "pane_id": {
+              "type": "uint32",
+              "id": 1
+            },
+            "should_float_if_hidden": {
+              "type": "bool",
+              "id": 2
+            },
+            "should_be_in_place_if_hidden": {
+              "type": "bool",
+              "id": 3
+            }
+          }
+        },
+        "FocusPluginPaneWithIdAction": {
+          "fields": {
+            "pane_id": {
+              "type": "uint32",
+              "id": 1
+            },
+            "should_float_if_hidden": {
+              "type": "bool",
+              "id": 2
+            },
+            "should_be_in_place_if_hidden": {
+              "type": "bool",
+              "id": 3
+            }
+          }
+        },
+        "RenameTerminalPaneAction": {
+          "fields": {
+            "pane_id": {
+              "type": "uint32",
+              "id": 1
+            },
+            "name": {
+              "rule": "repeated",
+              "type": "uint32",
+              "id": 2
+            }
+          }
+        },
+        "RenamePluginPaneAction": {
+          "fields": {
+            "pane_id": {
+              "type": "uint32",
+              "id": 1
+            },
+            "name": {
+              "rule": "repeated",
+              "type": "uint32",
+              "id": 2
+            }
+          }
+        },
+        "RenameTabAction": {
+          "fields": {
+            "tab_index": {
+              "type": "uint32",
+              "id": 1
+            },
+            "name": {
+              "rule": "repeated",
+              "type": "uint32",
+              "id": 2
+            }
+          }
+        },
+        "GoToTabByIdAction": {
+          "fields": {
+            "id": {
+              "type": "uint64",
+              "id": 1
+            }
+          }
+        },
+        "CloseTabByIdAction": {
+          "fields": {
+            "id": {
+              "type": "uint64",
+              "id": 1
+            }
+          }
+        },
+        "RenameTabByIdAction": {
+          "fields": {
+            "id": {
+              "type": "uint64",
+              "id": 1
+            },
+            "name": {
+              "type": "string",
+              "id": 2
+            }
+          }
+        },
+        "RenameSessionAction": {
+          "fields": {
+            "name": {
+              "type": "string",
+              "id": 1
+            }
+          }
+        },
+        "CliPipeAction": {
+          "oneofs": {
+            "_name": {
+              "oneof": [
+                "name"
+              ]
+            },
+            "_payload": {
+              "oneof": [
+                "payload"
+              ]
+            },
+            "_plugin": {
+              "oneof": [
+                "plugin"
+              ]
+            },
+            "_floating": {
+              "oneof": [
+                "floating"
+              ]
+            },
+            "_in_place": {
+              "oneof": [
+                "in_place"
+              ]
+            },
+            "_cwd": {
+              "oneof": [
+                "cwd"
+              ]
+            },
+            "_pane_title": {
+              "oneof": [
+                "pane_title"
+              ]
+            }
+          },
+          "fields": {
+            "pipe_id": {
+              "type": "string",
+              "id": 1
+            },
+            "name": {
+              "type": "string",
+              "id": 2,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "payload": {
+              "type": "string",
+              "id": 3,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "args": {
+              "keyType": "string",
+              "type": "string",
+              "id": 4
+            },
+            "plugin": {
+              "type": "string",
+              "id": 5,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "configuration": {
+              "keyType": "string",
+              "type": "string",
+              "id": 6
+            },
+            "launch_new": {
+              "type": "bool",
+              "id": 7
+            },
+            "skip_cache": {
+              "type": "bool",
+              "id": 8
+            },
+            "floating": {
+              "type": "bool",
+              "id": 9,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "in_place": {
+              "type": "bool",
+              "id": 10,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "cwd": {
+              "type": "string",
+              "id": 11,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "pane_title": {
+              "type": "string",
+              "id": 12,
+              "options": {
+                "proto3_optional": true
+              }
+            }
+          }
+        },
+        "KeybindPipeAction": {
+          "oneofs": {
+            "_name": {
+              "oneof": [
+                "name"
+              ]
+            },
+            "_payload": {
+              "oneof": [
+                "payload"
+              ]
+            },
+            "_plugin": {
+              "oneof": [
+                "plugin"
+              ]
+            },
+            "_plugin_id": {
+              "oneof": [
+                "plugin_id"
+              ]
+            },
+            "_floating": {
+              "oneof": [
+                "floating"
+              ]
+            },
+            "_in_place": {
+              "oneof": [
+                "in_place"
+              ]
+            },
+            "_cwd": {
+              "oneof": [
+                "cwd"
+              ]
+            },
+            "_pane_title": {
+              "oneof": [
+                "pane_title"
+              ]
+            }
+          },
+          "fields": {
+            "name": {
+              "type": "string",
+              "id": 1,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "payload": {
+              "type": "string",
+              "id": 2,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "args": {
+              "keyType": "string",
+              "type": "string",
+              "id": 3
+            },
+            "plugin": {
+              "type": "string",
+              "id": 4,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "plugin_id": {
+              "type": "uint32",
+              "id": 5,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "configuration": {
+              "keyType": "string",
+              "type": "string",
+              "id": 6
+            },
+            "launch_new": {
+              "type": "bool",
+              "id": 7
+            },
+            "skip_cache": {
+              "type": "bool",
+              "id": 8
+            },
+            "floating": {
+              "type": "bool",
+              "id": 9,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "in_place": {
+              "type": "bool",
+              "id": 10,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "cwd": {
+              "type": "string",
+              "id": 11,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "pane_title": {
+              "type": "string",
+              "id": 12,
+              "options": {
+                "proto3_optional": true
+              }
+            }
+          }
+        },
+        "StackPanesAction": {
+          "fields": {
+            "pane_ids": {
+              "rule": "repeated",
+              "type": "PaneId",
+              "id": 1
+            }
+          }
+        },
+        "ChangeFloatingPaneCoordinatesAction": {
+          "fields": {
+            "pane_id": {
+              "type": "PaneId",
+              "id": 1
+            },
+            "coordinates": {
+              "type": "FloatingPaneCoordinates",
+              "id": 2
+            }
+          }
+        },
+        "TogglePaneBorderlessAction": {
+          "fields": {
+            "pane_id": {
+              "type": "PaneId",
+              "id": 1
+            }
+          }
+        },
+        "SetPaneBorderlessAction": {
+          "fields": {
+            "pane_id": {
+              "type": "PaneId",
+              "id": 1
+            },
+            "borderless": {
+              "type": "bool",
+              "id": 2
+            }
+          }
+        },
+        "SetPaneColorAction": {
+          "oneofs": {
+            "_fg": {
+              "oneof": [
+                "fg"
+              ]
+            },
+            "_bg": {
+              "oneof": [
+                "bg"
+              ]
+            }
+          },
+          "fields": {
+            "pane_id": {
+              "type": "PaneId",
+              "id": 1
+            },
+            "fg": {
+              "type": "string",
+              "id": 2,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "bg": {
+              "type": "string",
+              "id": 3,
+              "options": {
+                "proto3_optional": true
+              }
+            }
+          }
+        },
+        "InputMode": {
+          "values": {
+            "INPUT_MODE_UNSPECIFIED": 0,
+            "INPUT_MODE_NORMAL": 1,
+            "INPUT_MODE_LOCKED": 2,
+            "INPUT_MODE_RESIZE": 3,
+            "INPUT_MODE_PANE": 4,
+            "INPUT_MODE_TAB": 5,
+            "INPUT_MODE_SCROLL": 6,
+            "INPUT_MODE_ENTER_SEARCH": 7,
+            "INPUT_MODE_SEARCH": 8,
+            "INPUT_MODE_RENAME_TAB": 9,
+            "INPUT_MODE_RENAME_PANE": 10,
+            "INPUT_MODE_SESSION": 11,
+            "INPUT_MODE_MOVE": 12,
+            "INPUT_MODE_PROMPT": 13,
+            "INPUT_MODE_TMUX": 14
+          }
+        },
+        "Direction": {
+          "values": {
+            "DIRECTION_UNSPECIFIED": 0,
+            "DIRECTION_LEFT": 1,
+            "DIRECTION_RIGHT": 2,
+            "DIRECTION_UP": 3,
+            "DIRECTION_DOWN": 4
+          }
+        },
+        "UnblockCondition": {
+          "values": {
+            "UNBLOCK_CONDITION_UNSPECIFIED": 0,
+            "UNBLOCK_CONDITION_ON_EXIT_SUCCESS": 1,
+            "UNBLOCK_CONDITION_ON_EXIT_FAILURE": 2,
+            "UNBLOCK_CONDITION_ON_ANY_EXIT": 3
+          }
+        },
+        "ResizeType": {
+          "values": {
+            "RESIZE_TYPE_UNSPECIFIED": 0,
+            "RESIZE_TYPE_INCREASE": 1,
+            "RESIZE_TYPE_DECREASE": 2
+          }
+        },
+        "Position": {
+          "fields": {
+            "line": {
+              "type": "int32",
+              "id": 1
+            },
+            "column": {
+              "type": "uint64",
+              "id": 2
+            }
+          }
+        },
+        "CliAssets": {
+          "oneofs": {
+            "_config_file_path": {
+              "oneof": [
+                "config_file_path"
+              ]
+            },
+            "_config_dir": {
+              "oneof": [
+                "config_dir"
+              ]
+            },
+            "_configuration_options": {
+              "oneof": [
+                "configuration_options"
+              ]
+            },
+            "_layout": {
+              "oneof": [
+                "layout"
+              ]
+            },
+            "_data_dir": {
+              "oneof": [
+                "data_dir"
+              ]
+            },
+            "_max_panes": {
+              "oneof": [
+                "max_panes"
+              ]
+            },
+            "_cwd": {
+              "oneof": [
+                "cwd"
+              ]
+            }
+          },
+          "fields": {
+            "config_file_path": {
+              "type": "string",
+              "id": 1,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "config_dir": {
+              "type": "string",
+              "id": 2,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "should_ignore_config": {
+              "type": "bool",
+              "id": 3
+            },
+            "configuration_options": {
+              "type": "Options",
+              "id": 4,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "layout": {
+              "type": "LayoutInfo",
+              "id": 5,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "terminal_window_size": {
+              "type": "Size",
+              "id": 6
+            },
+            "data_dir": {
+              "type": "string",
+              "id": 7,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "is_debug": {
+              "type": "bool",
+              "id": 8
+            },
+            "max_panes": {
+              "type": "uint32",
+              "id": 9,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "force_run_layout_commands": {
+              "type": "bool",
+              "id": 10
+            },
+            "cwd": {
+              "type": "string",
+              "id": 11,
+              "options": {
+                "proto3_optional": true
+              }
+            }
+          }
+        },
+        "LayoutInfo": {
+          "oneofs": {
+            "layout_type": {
+              "oneof": [
+                "file_path",
+                "builtin_name",
+                "url",
+                "stringified"
+              ]
+            },
+            "_layout_metadata": {
+              "oneof": [
+                "layout_metadata"
+              ]
+            }
+          },
+          "fields": {
+            "file_path": {
+              "type": "string",
+              "id": 1
+            },
+            "builtin_name": {
+              "type": "string",
+              "id": 2
+            },
+            "url": {
+              "type": "string",
+              "id": 3
+            },
+            "stringified": {
+              "type": "string",
+              "id": 4
+            },
+            "layout_metadata": {
+              "type": "LayoutMetadata",
+              "id": 5,
+              "options": {
+                "proto3_optional": true
+              }
+            }
+          }
+        },
+        "LayoutMetadata": {
+          "fields": {
+            "tabs": {
+              "rule": "repeated",
+              "type": "TabMetadata",
+              "id": 1
+            },
+            "creation_time": {
+              "type": "string",
+              "id": 2
+            },
+            "update_time": {
+              "type": "string",
+              "id": 3
+            }
+          }
+        },
+        "TabMetadata": {
+          "oneofs": {
+            "_name": {
+              "oneof": [
+                "name"
+              ]
+            }
+          },
+          "fields": {
+            "pane_metadata": {
+              "rule": "repeated",
+              "type": "PaneMetadata",
+              "id": 1
+            },
+            "name": {
+              "type": "string",
+              "id": 2,
+              "options": {
+                "proto3_optional": true
+              }
+            }
+          }
+        },
+        "PaneMetadata": {
+          "oneofs": {
+            "_name": {
+              "oneof": [
+                "name"
+              ]
+            }
+          },
+          "fields": {
+            "name": {
+              "type": "string",
+              "id": 1,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "is_plugin": {
+              "type": "bool",
+              "id": 2
+            },
+            "is_builtin_plugin": {
+              "type": "bool",
+              "id": 3
+            }
+          }
+        },
+        "ConnectToSession": {
+          "oneofs": {
+            "_name": {
+              "oneof": [
+                "name"
+              ]
+            },
+            "_tab_position": {
+              "oneof": [
+                "tab_position"
+              ]
+            },
+            "_pane_id": {
+              "oneof": [
+                "pane_id"
+              ]
+            },
+            "_layout": {
+              "oneof": [
+                "layout"
+              ]
+            },
+            "_cwd": {
+              "oneof": [
+                "cwd"
+              ]
+            }
+          },
+          "fields": {
+            "name": {
+              "type": "string",
+              "id": 1,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "tab_position": {
+              "type": "uint32",
+              "id": 2,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "pane_id": {
+              "type": "PaneIdWithPlugin",
+              "id": 3,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "layout": {
+              "type": "LayoutInfo",
+              "id": 4,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "cwd": {
+              "type": "string",
+              "id": 5,
+              "options": {
+                "proto3_optional": true
+              }
+            }
+          }
+        },
+        "SwitchSessionAction": {
+          "oneofs": {
+            "_tab_position": {
+              "oneof": [
+                "tab_position"
+              ]
+            },
+            "_pane_id": {
+              "oneof": [
+                "pane_id"
+              ]
+            },
+            "_layout": {
+              "oneof": [
+                "layout"
+              ]
+            },
+            "_cwd": {
+              "oneof": [
+                "cwd"
+              ]
+            }
+          },
+          "fields": {
+            "name": {
+              "type": "string",
+              "id": 1
+            },
+            "tab_position": {
+              "type": "uint32",
+              "id": 2,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "pane_id": {
+              "type": "PaneIdWithPlugin",
+              "id": 3,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "layout": {
+              "type": "LayoutInfo",
+              "id": 4,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "cwd": {
+              "type": "string",
+              "id": 5,
+              "options": {
+                "proto3_optional": true
+              }
+            }
+          }
+        },
+        "NewPanePlacement": {
+          "oneofs": {
+            "placement_type": {
+              "oneof": [
+                "no_preference",
+                "tiled",
+                "floating",
+                "in_place",
+                "stacked",
+                "no_preference_with_options",
+                "tiled_with_options",
+                "stacked_with_options"
+              ]
+            }
+          },
+          "fields": {
+            "no_preference": {
+              "type": "bool",
+              "id": 1
+            },
+            "tiled": {
+              "type": "Direction",
+              "id": 2
+            },
+            "floating": {
+              "type": "FloatingPaneCoordinates",
+              "id": 3
+            },
+            "in_place": {
+              "type": "NewPanePlacementInPlace",
+              "id": 4
+            },
+            "stacked": {
+              "type": "PaneId",
+              "id": 5
+            },
+            "no_preference_with_options": {
+              "type": "NoPreferencePlacement",
+              "id": 6
+            },
+            "tiled_with_options": {
+              "type": "TiledPlacement",
+              "id": 7
+            },
+            "stacked_with_options": {
+              "type": "StackedPlacement",
+              "id": 8
+            }
+          }
+        },
+        "NoPreferencePlacement": {
+          "oneofs": {
+            "_borderless": {
+              "oneof": [
+                "borderless"
+              ]
+            }
+          },
+          "fields": {
+            "borderless": {
+              "type": "bool",
+              "id": 1,
+              "options": {
+                "proto3_optional": true
+              }
+            }
+          }
+        },
+        "TiledPlacement": {
+          "oneofs": {
+            "_direction": {
+              "oneof": [
+                "direction"
+              ]
+            },
+            "_borderless": {
+              "oneof": [
+                "borderless"
+              ]
+            }
+          },
+          "fields": {
+            "direction": {
+              "type": "Direction",
+              "id": 1,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "borderless": {
+              "type": "bool",
+              "id": 2,
+              "options": {
+                "proto3_optional": true
+              }
+            }
+          }
+        },
+        "StackedPlacement": {
+          "oneofs": {
+            "_pane_id_to_stack_under": {
+              "oneof": [
+                "pane_id_to_stack_under"
+              ]
+            },
+            "_borderless": {
+              "oneof": [
+                "borderless"
+              ]
+            }
+          },
+          "fields": {
+            "pane_id_to_stack_under": {
+              "type": "PaneId",
+              "id": 1,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "borderless": {
+              "type": "bool",
+              "id": 2,
+              "options": {
+                "proto3_optional": true
+              }
+            }
+          }
+        },
+        "NewPanePlacementInPlace": {
+          "oneofs": {
+            "_pane_id_to_replace": {
+              "oneof": [
+                "pane_id_to_replace"
+              ]
+            },
+            "_borderless": {
+              "oneof": [
+                "borderless"
+              ]
+            }
+          },
+          "fields": {
+            "pane_id_to_replace": {
+              "type": "PaneId",
+              "id": 1,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "close_replaced_pane": {
+              "type": "bool",
+              "id": 2
+            },
+            "borderless": {
+              "type": "bool",
+              "id": 3,
+              "options": {
+                "proto3_optional": true
+              }
+            }
+          }
+        },
+        "PaneIdWithPlugin": {
+          "fields": {
+            "pane_id": {
+              "type": "uint32",
+              "id": 1
+            },
+            "is_plugin": {
+              "type": "bool",
+              "id": 2
+            }
+          }
+        },
+        "ExitReason": {
+          "values": {
+            "EXIT_REASON_UNSPECIFIED": 0,
+            "EXIT_REASON_NORMAL": 1,
+            "EXIT_REASON_NORMAL_DETACHED": 2,
+            "EXIT_REASON_FORCE_DETACHED": 3,
+            "EXIT_REASON_CANNOT_ATTACH": 4,
+            "EXIT_REASON_DISCONNECT": 5,
+            "EXIT_REASON_WEB_CLIENTS_FORBIDDEN": 6,
+            "EXIT_REASON_ERROR": 7,
+            "EXIT_REASON_CUSTOM_EXIT_STATUS": 8,
+            "EXIT_REASON_KICKED_BY_HOST": 9
+          }
+        },
+        "OpenFilePayload": {
+          "oneofs": {
+            "_line_number": {
+              "oneof": [
+                "line_number"
+              ]
+            },
+            "_cwd": {
+              "oneof": [
+                "cwd"
+              ]
+            },
+            "_originating_plugin": {
+              "oneof": [
+                "originating_plugin"
+              ]
+            }
+          },
+          "fields": {
+            "file_to_open": {
+              "type": "string",
+              "id": 1
+            },
+            "line_number": {
+              "type": "uint32",
+              "id": 2,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "cwd": {
+              "type": "string",
+              "id": 3,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "originating_plugin": {
+              "type": "OriginatingPlugin",
+              "id": 4,
+              "options": {
+                "proto3_optional": true
+              }
+            }
+          }
+        },
+        "FloatingPaneCoordinates": {
+          "oneofs": {
+            "_x": {
+              "oneof": [
+                "x"
+              ]
+            },
+            "_y": {
+              "oneof": [
+                "y"
+              ]
+            },
+            "_width": {
+              "oneof": [
+                "width"
+              ]
+            },
+            "_height": {
+              "oneof": [
+                "height"
+              ]
+            },
+            "_pinned": {
+              "oneof": [
+                "pinned"
+              ]
+            },
+            "_borderless": {
+              "oneof": [
+                "borderless"
+              ]
+            }
+          },
+          "fields": {
+            "x": {
+              "type": "FloatingCoordinate",
+              "id": 1,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "y": {
+              "type": "FloatingCoordinate",
+              "id": 2,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "width": {
+              "type": "FloatingCoordinate",
+              "id": 3,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "height": {
+              "type": "FloatingCoordinate",
+              "id": 4,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "pinned": {
+              "type": "bool",
+              "id": 5,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "borderless": {
+              "type": "bool",
+              "id": 6,
+              "options": {
+                "proto3_optional": true
+              }
+            }
+          }
+        },
+        "FloatingCoordinate": {
+          "oneofs": {
+            "coordinate_type": {
+              "oneof": [
+                "fixed",
+                "percent"
+              ]
+            }
+          },
+          "fields": {
+            "fixed": {
+              "type": "uint32",
+              "id": 1
+            },
+            "percent": {
+              "type": "float",
+              "id": 2
+            }
+          }
+        },
+        "RunCommandAction": {
+          "oneofs": {
+            "_cwd": {
+              "oneof": [
+                "cwd"
+              ]
+            },
+            "_direction": {
+              "oneof": [
+                "direction"
+              ]
+            },
+            "_originating_plugin": {
+              "oneof": [
+                "originating_plugin"
+              ]
+            }
+          },
+          "fields": {
+            "command": {
+              "type": "string",
+              "id": 1
+            },
+            "args": {
+              "rule": "repeated",
+              "type": "string",
+              "id": 2
+            },
+            "cwd": {
+              "type": "string",
+              "id": 3,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "direction": {
+              "type": "Direction",
+              "id": 4,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "hold_on_close": {
+              "type": "bool",
+              "id": 5
+            },
+            "hold_on_start": {
+              "type": "bool",
+              "id": 6
+            },
+            "originating_plugin": {
+              "type": "OriginatingPlugin",
+              "id": 7,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "use_terminal_title": {
+              "type": "bool",
+              "id": 8
+            }
+          }
+        },
+        "TiledPaneLayout": {
+          "oneofs": {
+            "_name": {
+              "oneof": [
+                "name"
+              ]
+            },
+            "_split_size": {
+              "oneof": [
+                "split_size"
+              ]
+            },
+            "_run": {
+              "oneof": [
+                "run"
+              ]
+            },
+            "_borderless": {
+              "oneof": [
+                "borderless"
+              ]
+            },
+            "_focus": {
+              "oneof": [
+                "focus"
+              ]
+            },
+            "_exclude_from_sync": {
+              "oneof": [
+                "exclude_from_sync"
+              ]
+            },
+            "_external_children_index": {
+              "oneof": [
+                "external_children_index"
+              ]
+            },
+            "_pane_initial_contents": {
+              "oneof": [
+                "pane_initial_contents"
+              ]
+            },
+            "_default_fg": {
+              "oneof": [
+                "default_fg"
+              ]
+            },
+            "_default_bg": {
+              "oneof": [
+                "default_bg"
+              ]
+            }
+          },
+          "fields": {
+            "children_split_direction": {
+              "type": "SplitDirection",
+              "id": 1
+            },
+            "name": {
+              "type": "string",
+              "id": 2,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "children": {
+              "rule": "repeated",
+              "type": "TiledPaneLayout",
+              "id": 3
+            },
+            "split_size": {
+              "type": "SplitSize",
+              "id": 4,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "run": {
+              "type": "Run",
+              "id": 5,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "borderless": {
+              "type": "bool",
+              "id": 6,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "focus": {
+              "type": "string",
+              "id": 7,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "exclude_from_sync": {
+              "type": "bool",
+              "id": 8,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "children_are_stacked": {
+              "type": "bool",
+              "id": 9
+            },
+            "external_children_index": {
+              "type": "uint32",
+              "id": 10,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "is_expanded_in_stack": {
+              "type": "bool",
+              "id": 11
+            },
+            "hide_floating_panes": {
+              "type": "bool",
+              "id": 12
+            },
+            "pane_initial_contents": {
+              "type": "string",
+              "id": 13,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "default_fg": {
+              "type": "string",
+              "id": 14,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "default_bg": {
+              "type": "string",
+              "id": 15,
+              "options": {
+                "proto3_optional": true
+              }
+            }
+          }
+        },
+        "FloatingPaneLayout": {
+          "oneofs": {
+            "_name": {
+              "oneof": [
+                "name"
+              ]
+            },
+            "_height": {
+              "oneof": [
+                "height"
+              ]
+            },
+            "_width": {
+              "oneof": [
+                "width"
+              ]
+            },
+            "_x": {
+              "oneof": [
+                "x"
+              ]
+            },
+            "_y": {
+              "oneof": [
+                "y"
+              ]
+            },
+            "_pinned": {
+              "oneof": [
+                "pinned"
+              ]
+            },
+            "_run": {
+              "oneof": [
+                "run"
+              ]
+            },
+            "_focus": {
+              "oneof": [
+                "focus"
+              ]
+            },
+            "_pane_initial_contents": {
+              "oneof": [
+                "pane_initial_contents"
+              ]
+            },
+            "_logical_position": {
+              "oneof": [
+                "logical_position"
+              ]
+            },
+            "_borderless": {
+              "oneof": [
+                "borderless"
+              ]
+            },
+            "_default_fg": {
+              "oneof": [
+                "default_fg"
+              ]
+            },
+            "_default_bg": {
+              "oneof": [
+                "default_bg"
+              ]
+            }
+          },
+          "fields": {
+            "name": {
+              "type": "string",
+              "id": 1,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "height": {
+              "type": "PercentOrFixed",
+              "id": 2,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "width": {
+              "type": "PercentOrFixed",
+              "id": 3,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "x": {
+              "type": "PercentOrFixed",
+              "id": 4,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "y": {
+              "type": "PercentOrFixed",
+              "id": 5,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "pinned": {
+              "type": "bool",
+              "id": 6,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "run": {
+              "type": "Run",
+              "id": 7,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "focus": {
+              "type": "bool",
+              "id": 8,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "already_running": {
+              "type": "bool",
+              "id": 9
+            },
+            "pane_initial_contents": {
+              "type": "string",
+              "id": 10,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "logical_position": {
+              "type": "uint32",
+              "id": 11,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "borderless": {
+              "type": "bool",
+              "id": 12,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "default_fg": {
+              "type": "string",
+              "id": 13,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "default_bg": {
+              "type": "string",
+              "id": 14,
+              "options": {
+                "proto3_optional": true
+              }
+            }
+          }
+        },
+        "SwapTiledLayout": {
+          "oneofs": {
+            "_name": {
+              "oneof": [
+                "name"
+              ]
+            }
+          },
+          "fields": {
+            "constraint_map": {
+              "rule": "repeated",
+              "type": "LayoutConstraintTiledPair",
+              "id": 1
+            },
+            "name": {
+              "type": "string",
+              "id": 2,
+              "options": {
+                "proto3_optional": true
+              }
+            }
+          }
+        },
+        "SwapFloatingLayout": {
+          "oneofs": {
+            "_name": {
+              "oneof": [
+                "name"
+              ]
+            }
+          },
+          "fields": {
+            "constraint_map": {
+              "rule": "repeated",
+              "type": "LayoutConstraintFloatingPair",
+              "id": 1
+            },
+            "name": {
+              "type": "string",
+              "id": 2,
+              "options": {
+                "proto3_optional": true
+              }
+            }
+          }
+        },
+        "LayoutConstraintTiledPair": {
+          "fields": {
+            "constraint": {
+              "type": "LayoutConstraintWithValue",
+              "id": 1
+            },
+            "layout": {
+              "type": "TiledPaneLayout",
+              "id": 2
+            }
+          }
+        },
+        "LayoutConstraintFloatingPair": {
+          "fields": {
+            "constraint": {
+              "type": "LayoutConstraintWithValue",
+              "id": 1
+            },
+            "layouts": {
+              "rule": "repeated",
+              "type": "FloatingPaneLayout",
+              "id": 2
+            }
+          }
+        },
+        "RunPluginOrAlias": {
+          "oneofs": {
+            "plugin_type": {
+              "oneof": [
+                "plugin",
+                "alias"
+              ]
+            }
+          },
+          "fields": {
+            "plugin": {
+              "type": "RunPlugin",
+              "id": 1
+            },
+            "alias": {
+              "type": "PluginAlias",
+              "id": 2
+            }
+          }
+        },
+        "RunPlugin": {
+          "oneofs": {
+            "_initial_cwd": {
+              "oneof": [
+                "initial_cwd"
+              ]
+            }
+          },
+          "fields": {
+            "_allow_exec_host_cmd": {
+              "type": "bool",
+              "id": 1
+            },
+            "location": {
+              "type": "RunPluginLocationData",
+              "id": 2
+            },
+            "configuration": {
+              "type": "PluginUserConfiguration",
+              "id": 3
+            },
+            "initial_cwd": {
+              "type": "string",
+              "id": 4,
+              "options": {
+                "proto3_optional": true
+              }
+            }
+          }
+        },
+        "PluginAlias": {
+          "oneofs": {
+            "_configuration": {
+              "oneof": [
+                "configuration"
+              ]
+            },
+            "_initial_cwd": {
+              "oneof": [
+                "initial_cwd"
+              ]
+            },
+            "_run_plugin": {
+              "oneof": [
+                "run_plugin"
+              ]
+            }
+          },
+          "fields": {
+            "name": {
+              "type": "string",
+              "id": 1
+            },
+            "configuration": {
+              "type": "PluginUserConfiguration",
+              "id": 2,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "initial_cwd": {
+              "type": "string",
+              "id": 3,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "run_plugin": {
+              "type": "RunPlugin",
+              "id": 4,
+              "options": {
+                "proto3_optional": true
+              }
+            }
+          }
+        },
+        "CommandOrPluginFile": {
+          "oneofs": {
+            "_line_number": {
+              "oneof": [
+                "line_number"
+              ]
+            },
+            "_cwd": {
+              "oneof": [
+                "cwd"
+              ]
+            }
+          },
+          "fields": {
+            "path": {
+              "type": "string",
+              "id": 1
+            },
+            "line_number": {
+              "type": "int32",
+              "id": 2,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "cwd": {
+              "type": "string",
+              "id": 3,
+              "options": {
+                "proto3_optional": true
+              }
+            }
+          }
+        },
+        "CommandOrPlugin": {
+          "oneofs": {
+            "command_or_plugin_type": {
+              "oneof": [
+                "command",
+                "plugin",
+                "file"
+              ]
+            }
+          },
+          "fields": {
+            "command": {
+              "type": "RunCommandAction",
+              "id": 1
+            },
+            "plugin": {
+              "type": "RunPluginOrAlias",
+              "id": 2
+            },
+            "file": {
+              "type": "CommandOrPluginFile",
+              "id": 3
+            }
+          }
+        },
+        "MouseEvent": {
+          "fields": {
+            "event_type": {
+              "type": "MouseEventType",
+              "id": 1
+            },
+            "left": {
+              "type": "bool",
+              "id": 2
+            },
+            "right": {
+              "type": "bool",
+              "id": 3
+            },
+            "middle": {
+              "type": "bool",
+              "id": 4
+            },
+            "wheel_up": {
+              "type": "bool",
+              "id": 5
+            },
+            "wheel_down": {
+              "type": "bool",
+              "id": 6
+            },
+            "shift": {
+              "type": "bool",
+              "id": 7
+            },
+            "alt": {
+              "type": "bool",
+              "id": 8
+            },
+            "ctrl": {
+              "type": "bool",
+              "id": 9
+            },
+            "position": {
+              "type": "Position",
+              "id": 10
+            }
+          }
+        },
+        "MouseEventType": {
+          "values": {
+            "MOUSE_EVENT_TYPE_UNSPECIFIED": 0,
+            "MOUSE_EVENT_TYPE_PRESS": 1,
+            "MOUSE_EVENT_TYPE_RELEASE": 2,
+            "MOUSE_EVENT_TYPE_MOTION": 3
+          }
+        },
+        "SearchDirection": {
+          "values": {
+            "SEARCH_DIRECTION_UNSPECIFIED": 0,
+            "SEARCH_DIRECTION_DOWN": 1,
+            "SEARCH_DIRECTION_UP": 2
+          }
+        },
+        "SearchOption": {
+          "values": {
+            "SEARCH_OPTION_UNSPECIFIED": 0,
+            "SEARCH_OPTION_CASE_SENSITIVITY": 1,
+            "SEARCH_OPTION_WHOLE_WORD": 2,
+            "SEARCH_OPTION_WRAP": 3
+          }
+        },
+        "PaneId": {
+          "oneofs": {
+            "pane_type": {
+              "oneof": [
+                "terminal",
+                "plugin"
+              ]
+            }
+          },
+          "fields": {
+            "terminal": {
+              "type": "uint32",
+              "id": 1
+            },
+            "plugin": {
+              "type": "uint32",
+              "id": 2
+            }
+          }
+        },
+        "SplitDirection": {
+          "values": {
+            "SPLIT_DIRECTION_UNSPECIFIED": 0,
+            "SPLIT_DIRECTION_HORIZONTAL": 1,
+            "SPLIT_DIRECTION_VERTICAL": 2
+          }
+        },
+        "SplitSize": {
+          "oneofs": {
+            "size_type": {
+              "oneof": [
+                "percent",
+                "fixed"
+              ]
+            }
+          },
+          "fields": {
+            "percent": {
+              "type": "uint32",
+              "id": 1
+            },
+            "fixed": {
+              "type": "uint32",
+              "id": 2
+            }
+          }
+        },
+        "PercentOrFixed": {
+          "oneofs": {
+            "size_type": {
+              "oneof": [
+                "percent",
+                "fixed"
+              ]
+            }
+          },
+          "fields": {
+            "percent": {
+              "type": "uint32",
+              "id": 1
+            },
+            "fixed": {
+              "type": "uint32",
+              "id": 2
+            }
+          }
+        },
+        "LayoutConstraint": {
+          "values": {
+            "LAYOUT_CONSTRAINT_UNSPECIFIED": 0,
+            "LAYOUT_CONSTRAINT_MAX_PANES": 1,
+            "LAYOUT_CONSTRAINT_MIN_PANES": 2,
+            "LAYOUT_CONSTRAINT_EXACT_PANES": 3,
+            "LAYOUT_CONSTRAINT_NO_CONSTRAINT": 4
+          }
+        },
+        "LayoutConstraintWithValue": {
+          "oneofs": {
+            "_value": {
+              "oneof": [
+                "value"
+              ]
+            }
+          },
+          "fields": {
+            "constraint_type": {
+              "type": "LayoutConstraint",
+              "id": 1
+            },
+            "value": {
+              "type": "uint32",
+              "id": 2,
+              "options": {
+                "proto3_optional": true
+              }
+            }
+          }
+        },
+        "PluginUserConfiguration": {
+          "fields": {
+            "configuration": {
+              "keyType": "string",
+              "type": "string",
+              "id": 1
+            }
+          }
+        },
+        "RunPluginLocation": {
+          "values": {
+            "RUN_PLUGIN_LOCATION_UNSPECIFIED": 0,
+            "RUN_PLUGIN_LOCATION_FILE": 1,
+            "RUN_PLUGIN_LOCATION_ZELLIJ": 2,
+            "RUN_PLUGIN_LOCATION_REMOTE": 3
+          }
+        },
+        "RunPluginLocationData": {
+          "oneofs": {
+            "location_data": {
+              "oneof": [
+                "file_path",
+                "zellij_tag",
+                "remote_url"
+              ]
+            }
+          },
+          "fields": {
+            "location_type": {
+              "type": "RunPluginLocation",
+              "id": 1
+            },
+            "file_path": {
+              "type": "string",
+              "id": 2
+            },
+            "zellij_tag": {
+              "type": "PluginTag",
+              "id": 3
+            },
+            "remote_url": {
+              "type": "string",
+              "id": 4
+            }
+          }
+        },
+        "PluginTag": {
+          "fields": {
+            "tag": {
+              "type": "string",
+              "id": 1
+            }
+          }
+        },
+        "OriginatingPlugin": {
+          "fields": {
+            "plugin_id": {
+              "type": "uint32",
+              "id": 1
+            },
+            "client_id": {
+              "type": "uint32",
+              "id": 2
+            },
+            "context": {
+              "keyType": "string",
+              "type": "string",
+              "id": 3
+            }
+          }
+        },
+        "Run": {
+          "oneofs": {
+            "run_type": {
+              "oneof": [
+                "command",
+                "plugin",
+                "edit_file",
+                "cwd"
+              ]
+            }
+          },
+          "fields": {
+            "command": {
+              "type": "RunCommandAction",
+              "id": 1
+            },
+            "plugin": {
+              "type": "RunPluginOrAlias",
+              "id": 2
+            },
+            "edit_file": {
+              "type": "RunEditFileAction",
+              "id": 3
+            },
+            "cwd": {
+              "type": "string",
+              "id": 4
+            }
+          }
+        },
+        "RunEditFileAction": {
+          "oneofs": {
+            "_line_number": {
+              "oneof": [
+                "line_number"
+              ]
+            },
+            "_cwd": {
+              "oneof": [
+                "cwd"
+              ]
+            }
+          },
+          "fields": {
+            "file_path": {
+              "type": "string",
+              "id": 1
+            },
+            "line_number": {
+              "type": "uint32",
+              "id": 2,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "cwd": {
+              "type": "string",
+              "id": 3,
+              "options": {
+                "proto3_optional": true
+              }
+            }
+          }
+        },
+        "Options": {
+          "oneofs": {
+            "_simplified_ui": {
+              "oneof": [
+                "simplified_ui"
+              ]
+            },
+            "_theme": {
+              "oneof": [
+                "theme"
+              ]
+            },
+            "_default_mode": {
+              "oneof": [
+                "default_mode"
+              ]
+            },
+            "_default_shell": {
+              "oneof": [
+                "default_shell"
+              ]
+            },
+            "_default_cwd": {
+              "oneof": [
+                "default_cwd"
+              ]
+            },
+            "_default_layout": {
+              "oneof": [
+                "default_layout"
+              ]
+            },
+            "_layout_dir": {
+              "oneof": [
+                "layout_dir"
+              ]
+            },
+            "_theme_dir": {
+              "oneof": [
+                "theme_dir"
+              ]
+            },
+            "_mouse_mode": {
+              "oneof": [
+                "mouse_mode"
+              ]
+            },
+            "_pane_frames": {
+              "oneof": [
+                "pane_frames"
+              ]
+            },
+            "_mirror_session": {
+              "oneof": [
+                "mirror_session"
+              ]
+            },
+            "_on_force_close": {
+              "oneof": [
+                "on_force_close"
+              ]
+            },
+            "_scroll_buffer_size": {
+              "oneof": [
+                "scroll_buffer_size"
+              ]
+            },
+            "_copy_command": {
+              "oneof": [
+                "copy_command"
+              ]
+            },
+            "_copy_clipboard": {
+              "oneof": [
+                "copy_clipboard"
+              ]
+            },
+            "_copy_on_select": {
+              "oneof": [
+                "copy_on_select"
+              ]
+            },
+            "_scrollback_editor": {
+              "oneof": [
+                "scrollback_editor"
+              ]
+            },
+            "_session_name": {
+              "oneof": [
+                "session_name"
+              ]
+            },
+            "_attach_to_session": {
+              "oneof": [
+                "attach_to_session"
+              ]
+            },
+            "_auto_layout": {
+              "oneof": [
+                "auto_layout"
+              ]
+            },
+            "_session_serialization": {
+              "oneof": [
+                "session_serialization"
+              ]
+            },
+            "_serialize_pane_viewport": {
+              "oneof": [
+                "serialize_pane_viewport"
+              ]
+            },
+            "_scrollback_lines_to_serialize": {
+              "oneof": [
+                "scrollback_lines_to_serialize"
+              ]
+            },
+            "_styled_underlines": {
+              "oneof": [
+                "styled_underlines"
+              ]
+            },
+            "_serialization_interval": {
+              "oneof": [
+                "serialization_interval"
+              ]
+            },
+            "_disable_session_metadata": {
+              "oneof": [
+                "disable_session_metadata"
+              ]
+            },
+            "_support_kitty_keyboard_protocol": {
+              "oneof": [
+                "support_kitty_keyboard_protocol"
+              ]
+            },
+            "_web_server": {
+              "oneof": [
+                "web_server"
+              ]
+            },
+            "_web_sharing": {
+              "oneof": [
+                "web_sharing"
+              ]
+            },
+            "_stacked_resize": {
+              "oneof": [
+                "stacked_resize"
+              ]
+            },
+            "_show_startup_tips": {
+              "oneof": [
+                "show_startup_tips"
+              ]
+            },
+            "_show_release_notes": {
+              "oneof": [
+                "show_release_notes"
+              ]
+            },
+            "_advanced_mouse_actions": {
+              "oneof": [
+                "advanced_mouse_actions"
+              ]
+            },
+            "_web_server_ip": {
+              "oneof": [
+                "web_server_ip"
+              ]
+            },
+            "_web_server_port": {
+              "oneof": [
+                "web_server_port"
+              ]
+            },
+            "_web_server_cert": {
+              "oneof": [
+                "web_server_cert"
+              ]
+            },
+            "_web_server_key": {
+              "oneof": [
+                "web_server_key"
+              ]
+            },
+            "_enforce_https_for_localhost": {
+              "oneof": [
+                "enforce_https_for_localhost"
+              ]
+            },
+            "_post_command_discovery_hook": {
+              "oneof": [
+                "post_command_discovery_hook"
+              ]
+            },
+            "_osc8_hyperlinks": {
+              "oneof": [
+                "osc8_hyperlinks"
+              ]
+            },
+            "_mouse_hover_effects": {
+              "oneof": [
+                "mouse_hover_effects"
+              ]
+            },
+            "_client_async_worker_tasks": {
+              "oneof": [
+                "client_async_worker_tasks"
+              ]
+            },
+            "_visual_bell": {
+              "oneof": [
+                "visual_bell"
+              ]
+            },
+            "_focus_follows_mouse": {
+              "oneof": [
+                "focus_follows_mouse"
+              ]
+            },
+            "_mouse_click_through": {
+              "oneof": [
+                "mouse_click_through"
+              ]
+            }
+          },
+          "fields": {
+            "simplified_ui": {
+              "type": "bool",
+              "id": 1,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "theme": {
+              "type": "string",
+              "id": 2,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "default_mode": {
+              "type": "InputMode",
+              "id": 3,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "default_shell": {
+              "type": "string",
+              "id": 4,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "default_cwd": {
+              "type": "string",
+              "id": 5,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "default_layout": {
+              "type": "string",
+              "id": 6,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "layout_dir": {
+              "type": "string",
+              "id": 7,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "theme_dir": {
+              "type": "string",
+              "id": 8,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "mouse_mode": {
+              "type": "bool",
+              "id": 9,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "pane_frames": {
+              "type": "bool",
+              "id": 10,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "mirror_session": {
+              "type": "bool",
+              "id": 11,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "on_force_close": {
+              "type": "OnForceClose",
+              "id": 12,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "scroll_buffer_size": {
+              "type": "uint32",
+              "id": 13,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "copy_command": {
+              "type": "string",
+              "id": 14,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "copy_clipboard": {
+              "type": "Clipboard",
+              "id": 15,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "copy_on_select": {
+              "type": "bool",
+              "id": 16,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "scrollback_editor": {
+              "type": "string",
+              "id": 17,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "session_name": {
+              "type": "string",
+              "id": 18,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "attach_to_session": {
+              "type": "bool",
+              "id": 19,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "auto_layout": {
+              "type": "bool",
+              "id": 20,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "session_serialization": {
+              "type": "bool",
+              "id": 21,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "serialize_pane_viewport": {
+              "type": "bool",
+              "id": 22,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "scrollback_lines_to_serialize": {
+              "type": "uint32",
+              "id": 23,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "styled_underlines": {
+              "type": "bool",
+              "id": 24,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "serialization_interval": {
+              "type": "uint64",
+              "id": 25,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "disable_session_metadata": {
+              "type": "bool",
+              "id": 26,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "support_kitty_keyboard_protocol": {
+              "type": "bool",
+              "id": 27,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "web_server": {
+              "type": "bool",
+              "id": 28,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "web_sharing": {
+              "type": "WebSharing",
+              "id": 29,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "stacked_resize": {
+              "type": "bool",
+              "id": 30,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "show_startup_tips": {
+              "type": "bool",
+              "id": 31,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "show_release_notes": {
+              "type": "bool",
+              "id": 32,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "advanced_mouse_actions": {
+              "type": "bool",
+              "id": 33,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "web_server_ip": {
+              "type": "string",
+              "id": 34,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "web_server_port": {
+              "type": "uint32",
+              "id": 35,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "web_server_cert": {
+              "type": "string",
+              "id": 36,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "web_server_key": {
+              "type": "string",
+              "id": 37,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "enforce_https_for_localhost": {
+              "type": "bool",
+              "id": 38,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "post_command_discovery_hook": {
+              "type": "string",
+              "id": 39,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "osc8_hyperlinks": {
+              "type": "bool",
+              "id": 40,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "mouse_hover_effects": {
+              "type": "bool",
+              "id": 41,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "client_async_worker_tasks": {
+              "type": "uint64",
+              "id": 42,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "visual_bell": {
+              "type": "bool",
+              "id": 43,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "focus_follows_mouse": {
+              "type": "bool",
+              "id": 44,
+              "options": {
+                "proto3_optional": true
+              }
+            },
+            "mouse_click_through": {
+              "type": "bool",
+              "id": 45,
+              "options": {
+                "proto3_optional": true
+              }
+            }
+          }
+        },
+        "OnForceClose": {
+          "values": {
+            "ON_FORCE_CLOSE_UNSPECIFIED": 0,
+            "ON_FORCE_CLOSE_QUIT": 1,
+            "ON_FORCE_CLOSE_DETACH": 2
+          }
+        },
+        "Clipboard": {
+          "values": {
+            "CLIPBOARD_UNSPECIFIED": 0,
+            "CLIPBOARD_SYSTEM": 1,
+            "CLIPBOARD_PRIMARY": 2
+          }
+        },
+        "StackDirection": {
+          "values": {
+            "STACK_DIRECTION_UNSPECIFIED": 0,
+            "STACK_DIRECTION_HORIZONTAL": 1,
+            "STACK_DIRECTION_VERTICAL": 2
+          }
+        },
+        "WebSharing": {
+          "values": {
+            "WEB_SHARING_UNSPECIFIED": 0,
+            "WEB_SHARING_ON": 1,
+            "WEB_SHARING_OFF": 2,
+            "WEB_SHARING_DISABLED": 3
+          }
+        },
+        "ScrollUpByPaneIdAction": {
+          "fields": {
+            "pane_id": {
+              "type": "PaneId",
+              "id": 1
+            }
+          }
+        },
+        "ScrollDownByPaneIdAction": {
+          "fields": {
+            "pane_id": {
+              "type": "PaneId",
+              "id": 1
+            }
+          }
+        },
+        "ScrollToTopByPaneIdAction": {
+          "fields": {
+            "pane_id": {
+              "type": "PaneId",
+              "id": 1
+            }
+          }
+        },
+        "ScrollToBottomByPaneIdAction": {
+          "fields": {
+            "pane_id": {
+              "type": "PaneId",
+              "id": 1
+            }
+          }
+        },
+        "PageScrollUpByPaneIdAction": {
+          "fields": {
+            "pane_id": {
+              "type": "PaneId",
+              "id": 1
+            }
+          }
+        },
+        "PageScrollDownByPaneIdAction": {
+          "fields": {
+            "pane_id": {
+              "type": "PaneId",
+              "id": 1
+            }
+          }
+        },
+        "HalfPageScrollUpByPaneIdAction": {
+          "fields": {
+            "pane_id": {
+              "type": "PaneId",
+              "id": 1
+            }
+          }
+        },
+        "HalfPageScrollDownByPaneIdAction": {
+          "fields": {
+            "pane_id": {
+              "type": "PaneId",
+              "id": 1
+            }
+          }
+        },
+        "ResizeByPaneIdAction": {
+          "fields": {
+            "pane_id": {
+              "type": "PaneId",
+              "id": 1
+            },
+            "resize_action": {
+              "type": "ResizeAction",
+              "id": 2
+            }
+          }
+        },
+        "MovePaneByPaneIdAction": {
+          "oneofs": {
+            "_direction": {
+              "oneof": [
+                "direction"
+              ]
+            }
+          },
+          "fields": {
+            "pane_id": {
+              "type": "PaneId",
+              "id": 1
+            },
+            "direction": {
+              "type": "Direction",
+              "id": 2,
+              "options": {
+                "proto3_optional": true
+              }
+            }
+          }
+        },
+        "MovePaneBackwardsByPaneIdAction": {
+          "fields": {
+            "pane_id": {
+              "type": "PaneId",
+              "id": 1
+            }
+          }
+        },
+        "ClearScreenByPaneIdAction": {
+          "fields": {
+            "pane_id": {
+              "type": "PaneId",
+              "id": 1
+            }
+          }
+        },
+        "EditScrollbackByPaneIdAction": {
+          "fields": {
+            "pane_id": {
+              "type": "PaneId",
+              "id": 1
+            },
+            "ansi": {
+              "type": "bool",
+              "id": 2
+            }
+          }
+        },
+        "ToggleFullscreenByPaneIdAction": {
+          "fields": {
+            "pane_id": {
+              "type": "PaneId",
+              "id": 1
+            }
+          }
+        },
+        "TogglePaneEmbedOrFloatingByPaneIdAction": {
+          "fields": {
+            "pane_id": {
+              "type": "PaneId",
+              "id": 1
+            }
+          }
+        },
+        "CloseFocusByPaneIdAction": {
+          "fields": {
+            "pane_id": {
+              "type": "PaneId",
+              "id": 1
+            }
+          }
+        },
+        "RenamePaneByPaneIdAction": {
+          "fields": {
+            "pane_id": {
+              "type": "PaneId",
+              "id": 1
+            },
+            "name": {
+              "type": "bytes",
+              "id": 2
+            }
+          }
+        },
+        "UndoRenamePaneByPaneIdAction": {
+          "fields": {
+            "pane_id": {
+              "type": "PaneId",
+              "id": 1
+            }
+          }
+        },
+        "TogglePanePinnedByPaneIdAction": {
+          "fields": {
+            "pane_id": {
+              "type": "PaneId",
+              "id": 1
+            }
+          }
+        },
+        "FocusPaneByPaneIdAction": {
+          "fields": {
+            "pane_id": {
+              "type": "PaneId",
+              "id": 1
+            }
+          }
+        },
+        "UndoRenameTabByTabIdAction": {
+          "fields": {
+            "id": {
+              "type": "uint64",
+              "id": 1
+            }
+          }
+        },
+        "ToggleActiveSyncTabByTabIdAction": {
+          "fields": {
+            "id": {
+              "type": "uint64",
+              "id": 1
+            }
+          }
+        },
+        "ToggleFloatingPanesByTabIdAction": {
+          "fields": {
+            "id": {
+              "type": "uint64",
+              "id": 1
+            }
+          }
+        },
+        "PreviousSwapLayoutByTabIdAction": {
+          "fields": {
+            "id": {
+              "type": "uint64",
+              "id": 1
+            }
+          }
+        },
+        "NextSwapLayoutByTabIdAction": {
+          "fields": {
+            "id": {
+              "type": "uint64",
+              "id": 1
+            }
+          }
+        },
+        "MoveTabByTabIdAction": {
+          "fields": {
+            "id": {
+              "type": "uint64",
+              "id": 1
+            },
+            "direction": {
+              "type": "Direction",
+              "id": 2
+            }
+          }
+        }
+      }
+    }
+  }
+}
