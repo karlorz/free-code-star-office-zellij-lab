@@ -15,7 +15,7 @@ const SSE_REPLAY_CAPACITY = 64;
 const SSE_MAX_BUFFERED_MESSAGES = 32; // Drop clients with more than this many buffered messages
 let sseEventSeq = 0;
 let sseClientSeq = 0;
-const sseClients = new Map<number, { controller: ReadableStreamDefaultController; buffered: number }>();
+const sseClients = new Map<number, { controller: ReadableStreamDefaultController; buffered: number; connectedAt: number }>();
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
@@ -35,6 +35,9 @@ const metrics = {
   sseClientConnected: 0,
   sseClientDisconnected: 0,
   sseClientEvicted: 0,
+  sseClientDurationMs: new Map<string, number>(),  // bucket -> count (histogram)
+  sseClientDurationSum: 0,
+  sseClientDurationCount: 0,
   sseReplayRequests: 0,     // Last-Event-ID reconnects
   sseReplaySuccesses: 0,    // Successful replays from ring buffer
   sseReplayGaps: 0,         // Stale Last-Event-ID → gap notification
@@ -46,11 +49,17 @@ const metrics = {
   tokenRevocations: 0,
   starOfficeApply: 0,
   starOfficeApplyFailures: 0,
+  alertsReceived: 0,
   rateLimitRejections: 0,
   wsConnections: 0,
+  wsDisconnects: 0,
   wsMessages: 0,
+  wsClientsCurrent: 0,
   startTime: Date.now(),
 };
+
+// Histogram buckets for SSE client connection duration (seconds)
+const SSE_DURATION_BUCKETS = [1, 5, 10, 30, 60, 120, 300, 600, 1800, 3600, 7200, 14440];
 
 // Histogram buckets for HTTP request latency (ms)
 const LATENCY_BUCKETS = [0.1, 0.5, 1, 5, 10, 50, 100, 500, 1000];
@@ -336,6 +345,24 @@ function buildPrometheusMetrics(): string {
   lines.push(`# HELP bridge_star_office_apply_failures_total Total star-office apply failures`);
   lines.push(`# TYPE bridge_star_office_apply_failures_total counter`);
   lines.push(`bridge_star_office_apply_failures_total ${metrics.starOfficeApplyFailures}`);
+  // Alert webhook metrics
+  lines.push(`# HELP bridge_alerts_received_total Total alerts received from Alertmanager webhook`);
+  lines.push(`# TYPE bridge_alerts_received_total counter`);
+  lines.push(`bridge_alerts_received_total ${metrics.alertsReceived}`);
+  // SSE connection duration histogram
+  lines.push(`# HELP bridge_sse_client_duration_seconds SSE client connection duration in seconds`);
+  lines.push(`# TYPE bridge_sse_client_duration_seconds histogram`);
+  if (metrics.sseClientDurationCount > 0) {
+    let cumSum = 0;
+    for (const b of SSE_DURATION_BUCKETS) {
+      cumSum += metrics.sseClientDurationMs.get(`le="${b}"`) || 0;
+      lines.push(`bridge_sse_client_duration_seconds_bucket{le="${b}"} ${cumSum}`);
+    }
+    const infCount = metrics.sseClientDurationMs.get('le="+Inf"') || 0;
+    lines.push(`bridge_sse_client_duration_seconds_bucket{le="+Inf"} ${cumSum + infCount}`);
+    lines.push(`bridge_sse_client_duration_seconds_sum ${metrics.sseClientDurationSum.toFixed(2)}`);
+    lines.push(`bridge_sse_client_duration_seconds_count ${metrics.sseClientDurationCount}`);
+  }
   // WebSocket metrics
   lines.push(`# HELP bridge_ws_connections_total Total WebSocket connections established`);
   lines.push(`# TYPE bridge_ws_connections_total counter`);
@@ -343,6 +370,9 @@ function buildPrometheusMetrics(): string {
   lines.push(`# HELP bridge_ws_messages_total Total WebSocket messages received`);
   lines.push(`# TYPE bridge_ws_messages_total counter`);
   lines.push(`bridge_ws_messages_total ${metrics.wsMessages}`);
+  lines.push(`# HELP bridge_ws_clients_current Current WebSocket client connections`);
+  lines.push(`# TYPE bridge_ws_clients_current gauge`);
+  lines.push(`bridge_ws_clients_current ${metrics.wsClientsCurrent}`);
   // HTTP request metrics by path
   lines.push(`# HELP bridge_http_requests_total Total HTTP requests by path`);
   lines.push(`# TYPE bridge_http_requests_total counter`);
@@ -647,6 +677,7 @@ const server = Bun.serve({
       const data = ws.data as unknown as { authenticated: boolean; connectedAt: number; sessionId?: string };
       console.log(`[bridge] ws client connected authed=${data.authenticated} session=${data.sessionId || "none"} total=${server.subscriberCount("bridge-events") + 1}`);
       metrics.wsConnections++;
+      metrics.wsClientsCurrent++;
       // Subscribe to the event broadcast channel
       ws.subscribe("bridge-events");
       // Send initial snapshot with connection metadata
@@ -726,6 +757,8 @@ const server = Bun.serve({
       const data = ws.data as unknown as { sessionId?: string; connectedAt: number };
       const connDuration = data.connectedAt ? ((Date.now() - data.connectedAt) / 1000).toFixed(1) : "?";
       console.log(`[bridge] ws client disconnected code=${code} session=${data.sessionId || "none"} duration=${connDuration}s`);
+      metrics.wsClientsCurrent--;
+      metrics.wsDisconnects++;
       ws.unsubscribe("bridge-events");
     },
   },
@@ -766,6 +799,7 @@ async function handleRequest(request: Request, url: URL): Promise<Response> {
         receiver: body.receiver,
       };
       broadcastSSE("alert", summary);
+      metrics.alertsReceived++;
       console.log(`[bridge] alert webhook: status=${status} count=${alerts.length}`);
       return json({ ok: true, broadcast: true });
     }
@@ -785,7 +819,7 @@ async function handleRequest(request: Request, url: URL): Promise<Response> {
       const clientId = ++sseClientSeq;
       const stream = new ReadableStream({
         start(controller) {
-          sseClients.set(clientId, { controller, buffered: 0 });
+          sseClients.set(clientId, { controller, buffered: 0, connectedAt: Date.now() });
           metrics.sseClientConnected++;
           // Notify other clients about new connection
           broadcastSSE("client_connected", { clientId, totalClients: sseClients.size });
@@ -838,6 +872,19 @@ async function handleRequest(request: Request, url: URL): Promise<Response> {
             }
           }
           request.signal.addEventListener("abort", () => {
+            const client = sseClients.get(clientId);
+            if (client) {
+              // Record SSE connection duration
+              const durationSec = (Date.now() - client.connectedAt) / 1000;
+              metrics.sseClientDurationCount++;
+              metrics.sseClientDurationSum += durationSec;
+              for (const b of SSE_DURATION_BUCKETS) {
+                if (durationSec <= b) {
+                  metrics.sseClientDurationMs.set(`le="${b}"`, (metrics.sseClientDurationMs.get(`le="${b}"`) || 0) + 1);
+                }
+              }
+              metrics.sseClientDurationMs.set('le="+Inf"', (metrics.sseClientDurationMs.get('le="+Inf"') || 0) + 1);
+            }
             sseClients.delete(clientId);
             metrics.sseClientDisconnected++;
             broadcastSSE("client_disconnected", { clientId, totalClients: sseClients.size });
@@ -915,7 +962,7 @@ body{font-family:monospace;margin:0;background:#1a1a2e;color:#e0e0e0;display:fle
 #events{flex:1;white-space:pre-wrap;font-size:0.8rem;overflow-y:auto;padding:0 1rem}
 .evt{padding:2px 0;border-bottom:1px solid #222}
 .evt-signal{color:#7ec8e3}.evt-snapshot{color:#f0c040}.evt-gap{color:#ff6b6b}
-.evt-client{color:#a0a0a0}.evt-backpressure{color:#ff4444}.evt-action{color:#9cf}.evt-other{color:#c0c0c0}
+.evt-client{color:#a0a0a0}.evt-backpressure{color:#ff4444}.evt-action{color:#9cf}.evt-alert{color:#ff8c00;font-weight:bold}.evt-other{color:#c0c0c0}
 .ts{color:#555;margin-right:0.5rem}
 .ws-indicator{font-size:0.75rem;padding:1px 6px;border-radius:2px}
 .ws-on{background:#0a0;color:#000}.ws-off{background:#a00;color:#fff}
@@ -966,6 +1013,7 @@ es.addEventListener("shutdown",e=>{add("other","SHUTDOWN "+e.data)});
 es.addEventListener("action_executed",e=>{const d=JSON.parse(e.data);add("action","ACTION "+d.action+" exit="+d.exitCode)});
 es.addEventListener("web_token_refreshed",e=>{const d=JSON.parse(e.data);tokenStatus.textContent="token: "+(d.tokenName||"refreshed");add("other","TOKEN REFRESHED "+d.tokenName)});
 es.addEventListener("web_token_revoked",e=>{const d=JSON.parse(e.data);tokenStatus.textContent="token: revoked";add("other","TOKEN REVOKED "+(d.name||"all"))});
+es.addEventListener("alert",e=>{const d=JSON.parse(e.data);const sev=d.alerts?.[0]?.labels?.severity||"?";const name=d.alerts?.[0]?.labels?.alertname||"?";const summ=d.alerts?.[0]?.annotations?.summary||"";add("alert","["+d.status.toUpperCase()+"] "+sev.toUpperCase()+": "+name+(summ?" — "+summ:"")+" ("+d.alertCount+" alert"+(d.alertCount>1?"s":"")+")")});
 es.onmessage=e=>{add("other",e.type+": "+e.data)};
 function wsToggle(){
   if(ws){ws.close();ws=null;return}
@@ -1022,7 +1070,7 @@ setInterval(()=>{fetch("/status").then(r=>r.json()).then(d=>{
     if (request.method === "GET" && url.pathname === "/help") {
       return json({
         ok: true,
-        version: "0.16.0",
+        version: "0.17.0",
         routes: ROUTE_TABLE,
       });
     }
@@ -1030,7 +1078,7 @@ setInterval(()=>{fetch("/status").then(r=>r.json()).then(d=>{
     if (request.method === "GET" && url.pathname === "/version") {
       return json({
         ok: true,
-        version: "0.16.0",
+        version: "0.17.0",
         runtime: `bun ${Bun.version}`,
         arch: process.arch,
         platform: process.platform,
@@ -1454,7 +1502,7 @@ setInterval(()=>{fetch("/status").then(r=>r.json()).then(d=>{
           (config as unknown as Record<string, unknown>).zellijWebTokenName = newTokenName;
           // Persist to env file so token survives restart
           try {
-            const envPath = process.env.BRIDGE_ENV_FILE || "/root/free-code-star-office-zellij-lab/.env.persist";
+            const envPath = config.envFile;
             let envContent = "";
             try { envContent = await readFile(envPath, "utf8"); } catch { /* first write */ }
             const lines = envContent.split("\n");
@@ -1652,7 +1700,7 @@ setInterval(()=>{fetch("/status").then(r=>r.json()).then(d=>{
       } catch {}
       return json({
         ok: true,
-        version: "0.16.0",
+        version: "0.17.0",
         runtime: `bun ${Bun.version}`,
         arch: process.arch,
         platform: process.platform,
@@ -1876,7 +1924,7 @@ const ROUTE_TABLE: { method: string; path: string; description: string; auth: bo
   { method: "GET", path: "/metrics/caddy", description: "Proxy Caddy admin API metrics", auth: false },
   { method: "GET", path: "/metrics/combined", description: "Bridge + Caddy merged metrics (single scrape target)", auth: false },
   { method: "GET", path: "/version", description: "Bridge version, runtime, arch", auth: false },
-  { method: "GET", path: "/ws", description: "WebSocket for bidirectional control (upgrade)", auth: false },
+  { method: "GET", path: "/ws", description: "WebSocket for bidirectional control (upgrade, auth optional — unauth=read-only)", auth: false },
   { method: "GET", path: "/help", description: "This route table", auth: false },
 ];
 

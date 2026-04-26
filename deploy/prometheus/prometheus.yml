@@ -6,6 +6,15 @@ global:
   evaluation_interval: 30s
 
 scrape_configs:
+  - job_name: prometheus
+    scrape_interval: 15s
+    static_configs:
+      - targets: ['localhost:9090']
+
+  - job_name: node
+    static_configs:
+      - targets: ['localhost:9100']
+
   - job_name: star-office-bridge
     static_configs:
       - targets: ['127.0.0.1:4317']
@@ -19,8 +28,3 @@ alerting:
   alertmanagers:
     - static_configs:
         - targets: ['127.0.0.1:9093']
-
-# alerting:
-#   alertmanagers:
-#     - static_configs:
-#         - targets: ['127.0.0.1:9093']

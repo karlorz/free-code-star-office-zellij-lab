@@ -136,4 +136,5 @@ export interface BridgeConfig {
   zellijWebUrl?: string;
   zellijWebToken?: string;
   zellijWebTokenName?: string;
+  envFile: string;
 }
