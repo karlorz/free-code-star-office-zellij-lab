@@ -10,16 +10,42 @@ Environment=BRIDGE_HOST=127.0.0.1
 Environment=BRIDGE_PORT=4317
 Environment=BRIDGE_DRY_RUN=true
 Environment=PATH=/root/.bun/bin:/usr/local/bin:/usr/bin:/bin
+
+# Restart policy
 Restart=on-failure
 RestartSec=3
-StandardOutput=append:/tmp/bridge.log
-StandardError=append:/tmp/bridge.log
 
-# Security hardening
-NoNewPrivileges=yes
+# Logging: journal integration
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=bridge
+
+# === SECURITY HARDENING ===
+
+# Bridge does NOT access /tmp sockets directly (receives HTTP POSTs on localhost)
 PrivateTmp=yes
+
+# ProtectHome: read-only -- may need to read /root for config
+ProtectHome=read-only
+
+# ProtectSystem: strict with explicit write exceptions
 ProtectSystem=strict
 ReadWritePaths=/root/free-code-star-office-zellij-lab/tmp
+
+NoNewPrivileges=yes
+PrivateDevices=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+RestrictRealtime=yes
+RestrictNamespaces=yes
+# Bun is a JS runtime -- MDWX may break JIT. Test carefully.
+# If Bun crashes with SIGILL, comment out MemoryDenyWriteExecute
+# MemoryDenyWriteExecute=yes
+CapabilityBoundingSet=~CAP_SYS_PTRACE ~CAP_SYS_ADMIN ~CAP_SYS_RAWIO ~CAP_SYS_MODULE
 
 [Install]
 WantedBy=multi-user.target

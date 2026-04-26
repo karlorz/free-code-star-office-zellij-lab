@@ -8,21 +8,62 @@ Type=simple
 ExecStartPre=/bin/sleep 2
 ExecStart=/bin/bash -c 'export ZELLIJ_SESSION_NAME=main HOME=/root XDG_RUNTIME_DIR=/run/user/0; exec /root/free-code-star-office-zellij-lab/scripts/zellij-session-monitor.sh'
 WorkingDirectory=/root/free-code-star-office-zellij-lab
+
+# Environment (duplicated in bash -c for reliable propagation to child processes)
 Environment=BRIDGE_URL=http://127.0.0.1:4317
 Environment=ZELLIJ_SESSION_NAME=main
 Environment=POLL_INTERVAL=2
 Environment=PATH=/usr/local/bin:/usr/bin:/bin
 Environment=HOME=/root
 Environment=XDG_RUNTIME_DIR=/run/user/0
+
+# Restart policy
 Restart=on-failure
 RestartSec=5
-StandardOutput=append:/tmp/zellij-monitor.log
-StandardError=append:/tmp/zellij-monitor.log
 
-# Security hardening
-NoNewPrivileges=yes
-# PrivateTmp breaks Zellij socket access at /tmp/zellij-0/
+# Logging: journal integration
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=zellij-monitor
+
+# === SECURITY HARDENING ===
+
+# PrivateTmp: DISABLED -- Zellij stores session sockets at /tmp/zellij-0/
+# Cannot use PrivateTmp=yes unless Zellij socket path is relocated to /run/
 # PrivateTmp=yes
+
+# ProtectHome: read-only -- allows reading /root config, blocks writes
+# If Zellij config needs writes, add: BindPaths=/root/.cache/zellij
+ProtectHome=read-only
+
+# ProtectSystem: strict with explicit write exceptions
+ProtectSystem=strict
+ReadWritePaths=/root/free-code-star-office-zellij-lab/tmp
+
+# Prevent privilege escalation
+NoNewPrivileges=yes
+
+# Limit device access (monitor does not need hardware)
+PrivateDevices=yes
+
+# Restrict networking to localhost + Unix sockets
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+
+# Process visibility: allow ps but hide details of other users' processes
+ProtectProc=invisible
+
+# Kernel protection
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+
+# Capability and syscall restrictions
+RestrictSUIDSGID=yes
+LockPersonality=yes
+RestrictRealtime=yes
+RestrictNamespaces=yes
+MemoryDenyWriteExecute=yes
+CapabilityBoundingSet=~CAP_SYS_PTRACE ~CAP_SYS_ADMIN ~CAP_SYS_RAWIO ~CAP_SYS_MODULE
 
 [Install]
 WantedBy=multi-user.target
