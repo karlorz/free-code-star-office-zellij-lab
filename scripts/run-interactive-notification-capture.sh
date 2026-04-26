@@ -20,6 +20,7 @@ BRIDGE_URL="http://${BRIDGE_HOST}:${BRIDGE_PORT}"
 EVENTS_LOG="${REPO_ROOT}/tmp/events.ndjson"
 BRIDGE_LOG="${REPO_ROOT}/tmp/live-bridge.log"
 POST_CAPTURE_CHECK="${POST_CAPTURE_CHECK:-true}"
+POST_CAPTURE_REPORT="${POST_CAPTURE_REPORT:-${REPO_ROOT}/tmp/live-capture-report.md}"
 
 if [[ -z "${LEADER_PROMPT:-}" ]]; then
   LEADER_PROMPT="Use the team tool now. Create a team named notif-capture. Then spawn one worker named worker-1 in that team with cwd set to ${REPO_ROOT}. Have the worker run a Bash tool call for: touch worker-permission-probe.txt. After dispatching the worker, do nothing else and wait so leader-side notifications can appear."
@@ -54,6 +55,7 @@ Environment overrides:
   CAPTURE_BATCH        Default: safe-lifecycle; use --list-batches for options
   ALLOW_RISKY_CAPTURE  Default: false; required for risky trigger guidance
   POST_CAPTURE_CHECK   Default: true; run read-only artifact checker after runtime exits
+  POST_CAPTURE_REPORT  Default: <lab repo>/tmp/live-capture-report.md
 EOF
 }
 
@@ -343,12 +345,13 @@ cat <<EOF
   - TaskCreated events that identify worker ownership
   - TaskCompleted or SubagentStop events that cleanly remove workers
 [interactive-capture] bridge log: ${BRIDGE_LOG}
+[interactive-capture] report: ${POST_CAPTURE_REPORT}
 EOF
 
 if [[ "${POST_CAPTURE_CHECK}" == "true" ]]; then
   echo "[interactive-capture] running read-only post-capture artifact check"
-  if ! bash "${SCRIPT_DIR}/check-live-capture-artifact.sh" "${EVENTS_LOG}"; then
-    echo "[interactive-capture] post-capture artifact check reported missing live events" >&2
+  if ! bash "${SCRIPT_DIR}/check-live-capture-artifact.sh" --batch "${CAPTURE_BATCH}" --report "${POST_CAPTURE_REPORT}" "${EVENTS_LOG}"; then
+    echo "[interactive-capture] post-capture artifact check reported missing live events for batch: ${CAPTURE_BATCH}" >&2
   fi
 fi
 
