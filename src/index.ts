@@ -709,8 +709,10 @@ async function handleRequest(request: Request, url: URL): Promise<Response> {
           if (lastEventId) {
             const requestedId = Number(lastEventId);
             if (!isNaN(requestedId)) {
-              const replayIndex = sseEventLog.findIndex((e) => e.id === requestedId);
-              if (replayIndex !== -1) {
+              // O(1) replay index: since IDs are sequential integers, compute directly
+              const oldestId = sseEventLog.length > 0 ? sseEventLog[0].id : sseEventSeq + 1;
+              const replayIndex = requestedId >= oldestId ? requestedId - oldestId : -1;
+              if (replayIndex >= 0 && replayIndex < sseEventLog.length) {
                 // Found the event — replay everything after it (skip ephemeral client events)
                 for (const entry of sseEventLog.slice(replayIndex + 1)) {
                   if (entry.event === "client_connected" || entry.event === "client_disconnected") continue;
@@ -1056,8 +1058,10 @@ setInterval(()=>{if(ws&&ws.readyState===1)ws.send(JSON.stringify({type:"ping"}))
       if (afterId) {
         const requestedId = Number(afterId);
         if (!isNaN(requestedId)) {
-          const afterIndex = sseEventLog.findIndex((e) => e.id === requestedId);
-          if (afterIndex !== -1) {
+          // O(1) index computation for sequential integer IDs
+          const oldestId = sseEventLog.length > 0 ? sseEventLog[0].id : sseEventSeq + 1;
+          const afterIndex = requestedId >= oldestId ? requestedId - oldestId : -1;
+          if (afterIndex >= 0 && afterIndex < sseEventLog.length) {
             events = sseEventLog.slice(afterIndex + 1);
           }
         }
