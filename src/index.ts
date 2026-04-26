@@ -961,7 +961,7 @@ setInterval(()=>{if(ws&&ws.readyState===1)ws.send(JSON.stringify({type:"ping"}))
     if (request.method === "GET" && url.pathname === "/help") {
       return json({
         ok: true,
-        version: "0.11.0",
+        version: "0.12.0",
         routes: ROUTE_TABLE,
       });
     }
@@ -969,7 +969,7 @@ setInterval(()=>{if(ws&&ws.readyState===1)ws.send(JSON.stringify({type:"ping"}))
     if (request.method === "GET" && url.pathname === "/version") {
       return json({
         ok: true,
-        version: "0.11.0",
+        version: "0.12.0",
         runtime: `bun ${Bun.version}`,
         arch: process.arch,
         platform: process.platform,
@@ -1097,6 +1097,43 @@ setInterval(()=>{if(ws&&ws.readyState===1)ws.send(JSON.stringify({type:"ping"}))
           ...CORS_HEADERS,
         },
       });
+    }
+
+    if (request.method === "GET" && url.pathname === "/metrics/caddy") {
+      // Proxy Caddy's built-in Prometheus metrics from admin API
+      try {
+        const caddyResp = await fetch("http://127.0.0.1:2019/metrics");
+        const body = await caddyResp.text();
+        return new Response(body, {
+          headers: {
+            "content-type": "text/plain; version=0.0.4; charset=utf-8",
+            ...CORS_HEADERS,
+          },
+        });
+      } catch {
+        return json({ ok: false, error: "caddy admin api unreachable" }, { status: 502 });
+      }
+    }
+
+    if (request.method === "GET" && url.pathname === "/metrics/combined") {
+      // Merge bridge + caddy metrics into single Prometheus scrape target
+      try {
+        const bridgeMetrics = buildPrometheusMetrics();
+        let caddyMetrics = "";
+        try {
+          const caddyResp = await fetch("http://127.0.0.1:2019/metrics");
+          caddyMetrics = await caddyResp.text();
+        } catch {}
+        const separator = caddyMetrics ? "\n# Caddy reverse proxy metrics\n" : "\n# Caddy metrics unavailable\n";
+        return new Response(bridgeMetrics + separator + caddyMetrics, {
+          headers: {
+            "content-type": "text/plain; version=0.0.4; charset=utf-8",
+            ...CORS_HEADERS,
+          },
+        });
+      } catch {
+        return json({ ok: false, error: "failed to combine metrics" }, { status: 500 });
+      }
     }
 
     if (request.method === "GET" && url.pathname === "/events/recent") {
@@ -1542,7 +1579,7 @@ setInterval(()=>{if(ws&&ws.readyState===1)ws.send(JSON.stringify({type:"ping"}))
       } catch {}
       return json({
         ok: true,
-        version: "0.11.0",
+        version: "0.12.0",
         runtime: `bun ${Bun.version}`,
         arch: process.arch,
         platform: process.platform,
@@ -1760,7 +1797,9 @@ const ROUTE_TABLE: { method: string; path: string; description: string; auth: bo
   { method: "GET", path: "/sessions/:id", description: "Session detail lookup", auth: false },
   { method: "GET", path: "/sessions/:id/events", description: "Per-session event history", auth: false },
   { method: "GET", path: "/stats", description: "Dedup stats, heap stats, runtime info", auth: false },
-  { method: "GET", path: "/metrics", description: "Prometheus exposition format metrics", auth: false },
+  { method: "GET", path: "/metrics", description: "Prometheus exposition format metrics (bridge only)", auth: false },
+  { method: "GET", path: "/metrics/caddy", description: "Proxy Caddy admin API metrics", auth: false },
+  { method: "GET", path: "/metrics/combined", description: "Bridge + Caddy merged metrics (single scrape target)", auth: false },
   { method: "GET", path: "/version", description: "Bridge version, runtime, arch", auth: false },
   { method: "GET", path: "/ws", description: "WebSocket for bidirectional control (upgrade)", auth: false },
   { method: "GET", path: "/help", description: "This route table", auth: false },
