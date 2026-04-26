@@ -225,6 +225,20 @@ groups:
             {{ $value }} pending HTTP requests. Bridge may be overloaded or
             a downstream dependency is slow.
 
+      # CRITICAL: Zellij session server unreachable via IPC
+      - alert: BridgeZellijSessionDown
+        expr: bridge_zellij_session_healthy == 0
+        for: 2m
+        labels:
+          severity: critical
+          service: star-office-bridge
+        annotations:
+          summary: "Zellij session server is unreachable on {{ $labels.instance }}"
+          description: >-
+            Zellij session health check has failed 3+ consecutive times.
+            The session server may have crashed or the UDS socket is gone.
+            IPC-dependent actions will fall back to CLI spawns.
+
   # ── Recording Rules ────────────────────────────────────────────────
   # Only rules that genuinely accelerate queries are kept.
   # Trivial rate() on low-cardinality single-instance counters are removed —

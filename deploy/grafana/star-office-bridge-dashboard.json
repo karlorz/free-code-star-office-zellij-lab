@@ -146,6 +146,18 @@
       ]
     },
     {
+      "title": "Zellij Session Health",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 0 },
+      "targets": [
+        { "expr": "bridge_zellij_session_healthy", "legendFormat": "Session", "refId": "A" }
+      ],
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "thresholds" }, "thresholds": { "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 1 }] }, "mappings": [{ "type": "value", "options": { "0": { "text": "UNHEALTHY", "color": "red" }, "1": { "text": "HEALTHY", "color": "green" } } }] },
+        "overrides": []
+      }
+    },
+    {
       "title": "Firing Alerts",
       "type": "stat",
       "gridPos": { "h": 4, "w": 24, "x": 0, "y": 36 },
