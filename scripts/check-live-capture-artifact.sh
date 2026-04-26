@@ -311,6 +311,13 @@ counts = Counter(event["event"] for event in events)
 observed = set(counts)
 missing_required = [event for event in required if event not in observed]
 missing_optional = [event for event in optional if event not in observed]
+missing_by_batch = {
+    batch_name: [event for event in batch_events if event not in observed]
+    for batch_name, batch_events in required_by_batch.items()
+    if batch_name != "all"
+}
+complete_batches = [batch_name for batch_name, missing_events in missing_by_batch.items() if not missing_events]
+next_capture_batches = [batch_name for batch_name, missing_events in missing_by_batch.items() if missing_events]
 unknown_payload_keys_by_event = {
     event_name: payload_keys_by_event[event_name] - expected_payload_keys_by_event.get(event_name, set())
     for event_name in observed
@@ -412,6 +419,14 @@ if sse_proof:
     matched_sessions = ", ".join(sse_proof["session_ids"]) or "none"
     print(f"  - matched artifact sessions: {matched_sessions}")
 
+print("[live-capture-check] next capture targets:")
+if complete_batches:
+    print(f"  - complete batches: {', '.join(complete_batches)}")
+else:
+    print("  - complete batches: none")
+for batch_name in sorted(next_capture_batches):
+    print(f"  - {batch_name}: missing {', '.join(missing_by_batch[batch_name])}")
+
 if report_path:
     report_path.parent.mkdir(parents=True, exist_ok=True)
     generated_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
@@ -427,6 +442,7 @@ if report_path:
         f"- Unknown payload keys: {unknown_payload_key_count}.",
         f"- Unknown context keys: {unknown_context_key_count}.",
         f"- SSE proof: {'provided' if sse_proof else 'not provided'}.",
+        f"- Complete capture batches: {len(complete_batches)} of {len(missing_by_batch)}.",
         "",
         "## Artifact",
         "",
@@ -526,6 +542,21 @@ if report_path:
             f"- Matched artifact sessions: {matched_sessions}",
             "",
         ])
+
+    lines.extend([
+        "## Next Capture Targets",
+        "",
+        "This section groups still-missing canonical events by capture batch so the next operator run can target the smallest useful scenario. It is derived from event names only.",
+        "",
+        "| Batch | Status | Missing events |",
+        "|-------|--------|----------------|",
+    ])
+    for batch_name in sorted(missing_by_batch):
+        missing_events = missing_by_batch[batch_name]
+        batch_status = "complete" if not missing_events else "missing"
+        missing_text = ", ".join(f"`{event}`" for event in missing_events) or "none"
+        lines.append(f"| `{batch_name}` | {batch_status} | {missing_text} |")
+    lines.append("")
 
     lines.extend([
         "## Interpretation",
