@@ -1230,7 +1230,7 @@ setInterval(()=>{fetch("/status").then(r=>r.json()).then(d=>{
     if (request.method === "GET" && url.pathname === "/help") {
       return json({
         ok: true,
-        version: "0.27.0",
+        version: "0.28.0",
         routes: ROUTE_TABLE,
       });
     }
@@ -1238,7 +1238,7 @@ setInterval(()=>{fetch("/status").then(r=>r.json()).then(d=>{
     if (request.method === "GET" && url.pathname === "/version") {
       return json({
         ok: true,
-        version: "0.27.0",
+        version: "0.28.0",
         runtime: `bun ${Bun.version}`,
         arch: process.arch,
         platform: process.platform,
@@ -1252,16 +1252,20 @@ setInterval(()=>{fetch("/status").then(r=>r.json()).then(d=>{
       }
       const before = process.memoryUsage();
       const force = url.searchParams.get("force") === "true";
+      const shrink = url.searchParams.get("shrink") !== "false"; // default true
       Bun.gc(force);
+      if (shrink) Bun.shrink();
       const after = process.memoryUsage();
       metrics.gcTriggers++;
-      console.log(`[bridge] manual gc triggered force=${force} rss: ${before.rss} → ${after.rss} heapUsed: ${before.heapUsed} → ${after.heapUsed}`);
+      console.log(`[bridge] manual gc triggered force=${force} shrink=${shrink} rss: ${before.rss} → ${after.rss} heapUsed: ${before.heapUsed} → ${after.heapUsed}`);
       return json({
         ok: true,
         force,
+        shrink,
         before: { rss: before.rss, heapUsed: before.heapUsed, heapTotal: before.heapTotal },
         after: { rss: after.rss, heapUsed: after.heapUsed, heapTotal: after.heapTotal },
         freedHeap: before.heapUsed - after.heapUsed,
+        freedRss: before.rss - after.rss,
       });
     }
 
@@ -2167,7 +2171,7 @@ setInterval(()=>{fetch("/status").then(r=>r.json()).then(d=>{
       } catch {}
       return json({
         ok: true,
-        version: "0.27.0",
+        version: "0.28.0",
         runtime: `bun ${Bun.version}`,
         arch: process.arch,
         platform: process.platform,
