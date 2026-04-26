@@ -21,5 +21,6 @@ export function loadConfig(): BridgeConfig {
     zellijSessionName: process.env.ZELLIJ_SESSION_NAME || undefined,
     zellijWebUrl: process.env.ZELLIJ_WEB_URL || undefined,
     zellijWebToken: process.env.ZELLIJ_WEB_TOKEN || undefined,
+    zellijWebTokenName: process.env.ZELLIJ_WEB_TOKEN_NAME || undefined,
   };
 }

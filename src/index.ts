@@ -1033,12 +1033,14 @@ setInterval(()=>{if(ws&&ws.readyState===1)ws.send(JSON.stringify({type:"ping"}))
         }
 
         // Parse token from output like "token_5: b5b1136b-c71d-48c3-9e91-e82e43117cc7"
-        const tokenMatch = stdout.match(/token[_\d]*\s*:\s*([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i);
-        const newToken = tokenMatch ? tokenMatch[1] : null;
+        const tokenMatch = stdout.match(/(token_\d+)\s*:\s*([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i);
+        const newToken = tokenMatch ? tokenMatch[2] : null;
+        const newTokenName = tokenMatch ? tokenMatch[1] : null;
 
         if (newToken) {
           (config as unknown as Record<string, unknown>).zellijWebToken = newToken;
-          broadcastSSE("web_token_refreshed", { tokenSet: true, timestamp: new Date().toISOString() });
+          (config as unknown as Record<string, unknown>).zellijWebTokenName = newTokenName;
+          broadcastSSE("web_token_refreshed", { tokenSet: true, tokenName: newTokenName, timestamp: new Date().toISOString() });
         }
 
         const webUrl = config.zellijWebUrl || null;
@@ -1074,15 +1076,11 @@ setInterval(()=>{if(ws&&ws.readyState===1)ws.send(JSON.stringify({type:"ping"}))
       if (!isAuthorized(request)) {
         return json({ ok: false, error: "authentication required" }, { status: 401 });
       }
-      let body: { token?: string };
+      let body: { name?: string; revokeAll?: boolean };
       try {
-        body = (await request.json()) as { token?: string };
+        body = (await request.json()) as { name?: string; revokeAll?: boolean };
       } catch {
         return json({ ok: false, error: "invalid json" }, { status: 400 });
-      }
-      const tokenToRevoke = body.token || config.zellijWebToken;
-      if (!tokenToRevoke) {
-        return json({ ok: false, error: "no token to revoke (none configured and none provided)" }, { status: 400 });
       }
       try {
         const env = {
@@ -1090,10 +1088,28 @@ setInterval(()=>{if(ws&&ws.readyState===1)ws.send(JSON.stringify({type:"ping"}))
           HOME: process.env.HOME || "/root",
           XDG_RUNTIME_DIR: process.env.XDG_RUNTIME_DIR || "/run/user/0",
         };
-        const proc = Bun.spawn(["zellij", "web", "--revoke-token", tokenToRevoke], {
-          stdout: "pipe",
-          stderr: "pipe",
-          env,
+        if (body.revokeAll) {
+          // Revoke all tokens
+          const proc = Bun.spawn(["zellij", "web", "--revoke-all-tokens"], {
+            stdout: "pipe", stderr: "pipe", env,
+          });
+          const stdout = await new Response(proc.stdout).text();
+          const stderr = await new Response(proc.stderr).text();
+          const exitCode = await proc.exited;
+          if (exitCode !== 0) {
+            return json({ ok: false, error: "revoke-all-tokens failed", exitCode, stderr: stderr.trim() || null }, { status: 502 });
+          }
+          (config as unknown as Record<string, unknown>).zellijWebToken = undefined;
+          broadcastSSE("web_token_revoked", { all: true, timestamp: new Date().toISOString() });
+          return json({ ok: true, revokedAll: true, rawOutput: stdout.trim() || null });
+        }
+        // Revoke by token name (e.g., "token_5") — NOT the UUID
+        const tokenName = body.name;
+        if (!tokenName) {
+          return json({ ok: false, error: "missing 'name' field (use token name like 'token_5', not the UUID)" }, { status: 400 });
+        }
+        const proc = Bun.spawn(["zellij", "web", "--revoke-token", tokenName], {
+          stdout: "pipe", stderr: "pipe", env,
         });
         const stdout = await new Response(proc.stdout).text();
         const stderr = await new Response(proc.stderr).text();
@@ -1108,15 +1124,10 @@ setInterval(()=>{if(ws&&ws.readyState===1)ws.send(JSON.stringify({type:"ping"}))
           }, { status: 502 });
         }
 
-        // If we revoked the currently-configured token, clear it
-        if (tokenToRevoke === config.zellijWebToken) {
-          (config as unknown as Record<string, unknown>).zellijWebToken = undefined;
-          broadcastSSE("web_token_revoked", { timestamp: new Date().toISOString() });
-        }
-
+        broadcastSSE("web_token_revoked", { name: tokenName, timestamp: new Date().toISOString() });
         return json({
           ok: true,
-          revoked: tokenToRevoke.slice(0, 8) + "...",
+          revoked: tokenName,
           rawOutput: stdout.trim() || null,
         });
       } catch (error) {
@@ -1124,6 +1135,38 @@ setInterval(()=>{if(ws&&ws.readyState===1)ws.send(JSON.stringify({type:"ping"}))
           ok: false,
           error: error instanceof Error ? error.message : String(error),
         }, { status: 500 });
+      }
+    }
+
+    if (request.method === "GET" && url.pathname === "/web/tokens") {
+      // List token names and creation dates (no actual token values)
+      if (!isAuthorized(request)) {
+        return json({ ok: false, error: "authentication required" }, { status: 401 });
+      }
+      try {
+        const env = {
+          ...process.env,
+          HOME: process.env.HOME || "/root",
+          XDG_RUNTIME_DIR: process.env.XDG_RUNTIME_DIR || "/run/user/0",
+        };
+        const proc = Bun.spawn(["zellij", "web", "--list-tokens"], {
+          stdout: "pipe", stderr: "pipe", env,
+        });
+        const stdout = await new Response(proc.stdout).text();
+        const stderr = await new Response(proc.stderr).text();
+        const exitCode = await proc.exited;
+        if (exitCode !== 0) {
+          return json({ ok: false, error: "list-tokens failed", exitCode, stderr: stderr.trim() || null }, { status: 502 });
+        }
+        // Parse output like "token_1: created at 2026-04-26 06:48:42\n token_2: ..."
+        const tokens = stdout.trim().split("\n").filter(Boolean).map((line: string) => {
+          const match = line.match(/^(\S+):\s+created at\s+(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})(?:\s+\[(READ-ONLY)\])?/);
+          if (match) return { name: match[1], createdAt: match[2], readOnly: match[3] === "READ-ONLY" };
+          return { raw: line.trim() };
+        });
+        return json({ ok: true, tokens, activeTokenName: config.zellijWebTokenName || null });
+      } catch (error) {
+        return json({ ok: false, error: error instanceof Error ? error.message : String(error) }, { status: 500 });
       }
     }
 
@@ -1318,7 +1361,8 @@ const ROUTE_TABLE: { method: string; path: string; description: string; auth: bo
   { method: "GET", path: "/web", description: "Zellij web config (URL, tokenSet, session)", auth: false },
   { method: "GET", path: "/web/token", description: "Zellij web token (authenticated)", auth: true },
   { method: "GET", path: "/web/token/refresh", description: "Refresh Zellij web token via CLI (authenticated)", auth: true },
-  { method: "POST", path: "/web/token/revoke", description: "Revoke a Zellij web token (authenticated)", auth: true },
+  { method: "POST", path: "/web/token/revoke", description: "Revoke token by name or revoke all (authenticated)", auth: true },
+  { method: "GET", path: "/web/tokens", description: "List token names and creation dates (authenticated)", auth: true },
   { method: "GET", path: "/status", description: "Unified overview (health+version+web+heap)", auth: false },
   { method: "GET", path: "/snapshot", description: "Full session state for drift correction", auth: false },
   { method: "GET", path: "/sessions", description: "Active session list", auth: false },

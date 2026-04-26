@@ -135,4 +135,5 @@ export interface BridgeConfig {
   zellijSessionName?: string;
   zellijWebUrl?: string;
   zellijWebToken?: string;
+  zellijWebTokenName?: string;
 }
