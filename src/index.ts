@@ -266,6 +266,10 @@ const server = Bun.serve({
       });
     }
 
+    if (request.method === "GET" && url.pathname === "/healthz") {
+      return new Response("ok", { status: 200, headers: { "content-type": "text/plain" } });
+    }
+
     if (request.method === "GET" && url.pathname === "/sessions") {
       return json({
         ok: true,
