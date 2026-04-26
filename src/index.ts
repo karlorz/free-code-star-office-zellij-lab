@@ -17,7 +17,7 @@ const SSE_MAX_BUFFERED_MESSAGES = 32; // Drop clients with more than this many b
 let sseEventSeq = 0;
 let sseClientSeq = 0;
 const sseClients = new Map<number, { controller: ReadableStreamDefaultController; buffered: number; connectedAt: number }>();
-const BRIDGE_VERSION = "0.47.0";
+const BRIDGE_VERSION = "0.48.0";
 
 // Shared environment for zellij CLI subprocess calls
 function zellijEnv(session?: string): Record<string, string | undefined> {
@@ -1014,7 +1014,7 @@ const server = Bun.serve({
           const session = wsSession || config.zellijSessionName || "main";
           try {
             // Fast path: IPC for eligible actions
-            if (IPC_ELIGIBLE.has(action)) {
+            if (IPC_ELIGIBLE.has(action) && metrics.zellijSessionHealthy === 1) {
               try {
                 const responses = await ipcSendAction(session, action, args);
                 let stdout = "";
@@ -1261,6 +1261,8 @@ async function handleRequest(request: Request, url: URL): Promise<Response> {
         sseClientIds: [...sseClients.keys()],
         uptime: process.uptime(),
         memory: { rss: mem.rss, heapUsed: mem.heapUsed, heapTotal: mem.heapTotal },
+        zellijSessionHealthy: metrics.zellijSessionHealthy === 1,
+        zellijHealthFailures: metrics.zellijHealthConsecutiveFailures,
         isShuttingDown,
       });
     }
@@ -1480,6 +1482,8 @@ setInterval(()=>{fetch("/status").then(r=>r.json()).then(d=>{
           sseClients: sseClients.size,
           sseEventLogSize: sseEventLog.length,
           sessions: registry.list().length,
+          zellijSessionHealthy: metrics.zellijSessionHealthy === 1,
+          zellijHealthFailures: metrics.zellijHealthConsecutiveFailures,
           isShuttingDown,
         },
       };
@@ -2437,7 +2441,7 @@ setInterval(()=>{fetch("/status").then(r=>r.json()).then(d=>{
 
         const env = zellijEnv(session);
 
-        if (IPC_ELIGIBLE.has(body.action)) {
+        if (IPC_ELIGIBLE.has(body.action) && metrics.zellijSessionHealthy === 1) {
           // Fast path: direct UDS+protobuf IPC (avg 13ms vs 48ms CLI)
           try {
             const responses = await ipcSendAction(session, body.action, args);
@@ -2553,7 +2557,7 @@ setInterval(()=>{fetch("/status").then(r=>r.json()).then(d=>{
         const args = rawArgs || [];
         try {
           // Fast path: IPC for eligible actions
-          if (IPC_ELIGIBLE.has(action)) {
+          if (IPC_ELIGIBLE.has(action) && metrics.zellijSessionHealthy === 1) {
             try {
               const responses = await ipcSendAction(session, action, args);
               let stdout = "";
