@@ -372,7 +372,7 @@ process.on("SIGINT", () => gracefulShutdown("SIGINT"));
 const server = Bun.serve({
   hostname: config.host,
   port: config.port,
-  idleTimeout: 255, // Max allowed — prevents SSE streams from being killed during quiet periods
+  idleTimeout: 30, // Default for HTTP/WebSocket; SSE streams override per-request below
   fetch: async (request: Request, srv: any): Promise<Response | undefined> => {
     const url = new URL(request.url);
 
@@ -583,6 +583,15 @@ async function handleRequest(request: Request, url: URL): Promise<Response> {
     }
 
     if (request.method === "GET" && url.pathname === "/healthz") {
+      return new Response("ok", { status: 200, headers: { "content-type": "text/plain", ...CORS_HEADERS } });
+    }
+
+    if (request.method === "GET" && url.pathname === "/readyz") {
+      // Readiness probe: returns 503 during graceful shutdown, 200 otherwise
+      // Load balancers and Caddy should use this (not /healthz) to route traffic
+      if (isShuttingDown) {
+        return new Response("shutting down", { status: 503, headers: { "content-type": "text/plain", ...CORS_HEADERS } });
+      }
       return new Response("ok", { status: 200, headers: { "content-type": "text/plain", ...CORS_HEADERS } });
     }
 
@@ -1303,6 +1312,7 @@ const ROUTE_TABLE: { method: string; path: string; description: string; auth: bo
   { method: "POST", path: "/event/manual", description: "Submit manual events", auth: true },
   { method: "GET", path: "/health", description: "Bridge health check (JSON)", auth: false },
   { method: "GET", path: "/healthz", description: "Lightweight liveness probe (plain ok)", auth: false },
+  { method: "GET", path: "/readyz", description: "Readiness probe (503 during shutdown)", auth: false },
   { method: "GET", path: "/action", description: "List allowed Zellij actions", auth: false },
   { method: "POST", path: "/action", description: "Execute Zellij CLI action (whitelisted)", auth: true },
   { method: "GET", path: "/web", description: "Zellij web config (URL, tokenSet, session)", auth: false },

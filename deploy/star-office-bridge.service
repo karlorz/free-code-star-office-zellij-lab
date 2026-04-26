@@ -26,6 +26,14 @@ TimeoutStopSec=30
 # High connection count for SSE clients
 LimitNOFILE=65535
 
+# === MEMORY PROTECTION ===
+# Soft limit: throttle when exceeding 256MB (kernel applies pressure)
+MemoryHigh=256M
+# Hard limit: kill at 512MB to prevent runaway memory from crashing the host
+MemoryMax=512M
+# On OOM kill: restart the service (don't leave it dead)
+OOMPolicy=stop
+
 # Logging: journal integration
 StandardOutput=journal
 StandardError=journal
