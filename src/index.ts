@@ -1,6 +1,6 @@
 import { mkdir, appendFile, readFile } from "node:fs/promises";
 import { dirname } from "node:path";
-import { loadConfig } from "./config";
+import { loadConfig, timingSafeCompare } from "./config";
 import { SessionRegistry } from "./sessionRegistry";
 import { StarOfficeClient } from "./starOfficeClient";
 import { normalizeClaudeEvent } from "./stateMapper";
@@ -211,29 +211,9 @@ function isAuthorized(request: Request): boolean {
   }
   const provided = request.headers.get("x-bridge-secret");
   if (provided) {
-    return timingSafeEqual(provided, config.secret);
+    return timingSafeCompare(provided, config.secret);
   }
   return false;
-}
-
-/**
- * Constant-time string comparison to prevent timing attacks.
- * Unlike `===`, this does not short-circuit on the first differing byte.
- */
-function timingSafeEqual(a: string, b: string): boolean {
-  if (a.length !== b.length) {
-    // Still do a full comparison to avoid leaking length info via timing
-    let result = a.length ^ b.length;
-    for (let i = 0; i < Math.min(a.length, b.length); i++) {
-      result |= a.charCodeAt(i) ^ b.charCodeAt(i);
-    }
-    return result === 0;
-  }
-  let result = 0;
-  for (let i = 0; i < a.length; i++) {
-    result |= a.charCodeAt(i) ^ b.charCodeAt(i);
-  }
-  return result === 0;
 }
 
 // Simple rate limiter: per-IP sliding window

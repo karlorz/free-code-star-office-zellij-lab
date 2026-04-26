@@ -1,5 +1,6 @@
 import { join } from "node:path";
 import { readFileSync } from "node:fs";
+import { timingSafeEqual as cryptoTimingSafeEqual } from "node:crypto";
 import type { BridgeConfig } from "./types";
 
 function readBoolean(value: string | undefined, fallback: boolean): boolean {
@@ -45,4 +46,24 @@ export function loadConfig(): BridgeConfig {
     zellijWebToken: process.env.ZELLIJ_WEB_TOKEN || undefined,
     zellijWebTokenName: process.env.ZELLIJ_WEB_TOKEN_NAME || undefined,
   };
+}
+
+/**
+ * Constant-time string comparison using Node's crypto.timingSafeEqual.
+ * Falls back to custom XOR implementation if Buffer is unavailable.
+ * Prevents timing attacks on secret comparison.
+ */
+export function timingSafeCompare(a: string, b: string): boolean {
+  const bufA = Buffer.from(a, "utf8");
+  const bufB = Buffer.from(b, "utf8");
+  if (bufA.length !== bufB.length) {
+    // Still do a full comparison to avoid leaking length info via timing
+    let result = bufA.length ^ bufB.length;
+    const minLen = Math.min(bufA.length, bufB.length);
+    for (let i = 0; i < minLen; i++) {
+      result |= bufA[i] ^ bufB[i];
+    }
+    return result === 0;
+  }
+  return cryptoTimingSafeEqual(bufA, bufB);
 }
