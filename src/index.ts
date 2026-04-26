@@ -1123,6 +1123,7 @@ const ROUTE_TABLE: { method: string; path: string; description: string; auth: bo
   { method: "GET", path: "/sessions/:id/events", description: "Per-session event history", auth: false },
   { method: "GET", path: "/stats", description: "Dedup stats, heap stats, runtime info", auth: false },
   { method: "GET", path: "/version", description: "Bridge version, runtime, arch", auth: false },
+  { method: "GET", path: "/ws", description: "WebSocket for bidirectional control (upgrade)", auth: false },
   { method: "GET", path: "/help", description: "This route table", auth: false },
 ];
 
