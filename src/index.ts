@@ -2387,6 +2387,7 @@ setInterval(()=>{fetch("/status").then(r=>r.json()).then(d=>{
           args,
           session,
           exitCode,
+          via: "cli",
           result: parsed || null,
         });
       } catch (error) {
