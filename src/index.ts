@@ -17,7 +17,7 @@ const SSE_MAX_BUFFERED_MESSAGES = 32; // Drop clients with more than this many b
 let sseEventSeq = 0;
 let sseClientSeq = 0;
 const sseClients = new Map<number, { controller: ReadableStreamDefaultController; buffered: number; connectedAt: number }>();
-const BRIDGE_VERSION = "0.65.0";
+const BRIDGE_VERSION = "0.66.0";
 
 // Shared environment for zellij CLI subprocess calls
 function zellijEnv(session?: string): Record<string, string | undefined> {
@@ -1708,6 +1708,21 @@ setInterval(()=>{fetch("/status").then(r=>r.json()).then(d=>{
       }
     }
 
+    if (request.method === "POST" && url.pathname === "/debug/reload") {
+      if (!isAuthorized(request)) {
+        return json({ ok: false, error: "authentication required" }, { status: 401 });
+      }
+      try {
+        server.reload({
+          fetch: server.fetch,  // Re-read current handler (no-op for now, but enables future hot config swap)
+        });
+        console.log(`[bridge] server.reload() called — handlers swapped, connections preserved`);
+        return json({ ok: true, message: "handlers reloaded, SSE/WS connections preserved" });
+      } catch (error) {
+        return json({ ok: false, error: error instanceof Error ? error.message : String(error) }, { status: 500 });
+      }
+    }
+
     if (request.method === "GET" && url.pathname === "/diagnostics") {
       if (!isAuthorized(request)) {
         return json({ ok: false, error: "authentication required" }, { status: 401 });
@@ -2926,6 +2941,7 @@ const ROUTE_TABLE: { method: string; path: string; description: string; auth: bo
   { method: "POST", path: "/recover", description: "Manually trigger zellij session recovery (authenticated)", auth: true },
   { method: "POST", path: "/debug/gc", description: "Trigger Bun.gc() for production debugging (authenticated)", auth: true },
   { method: "GET", path: "/debug/heap-snapshot", description: "Generate heap snapshot for leak debugging (authenticated)", auth: true },
+  { method: "POST", path: "/debug/reload", description: "Hot-reload handlers without dropping connections (authenticated)", auth: true },
   { method: "GET", path: "/ws", description: "WebSocket for bidirectional control (upgrade, auth optional — unauth=read-only)", auth: false },
   { method: "GET", path: "/help", description: "This route table", auth: false },
 ];
