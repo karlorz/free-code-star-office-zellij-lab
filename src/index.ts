@@ -17,7 +17,7 @@ const SSE_MAX_BUFFERED_MESSAGES = 32; // Drop clients with more than this many b
 let sseEventSeq = 0;
 let sseClientSeq = 0;
 const sseClients = new Map<number, { controller: ReadableStreamDefaultController; buffered: number; connectedAt: number }>();
-const BRIDGE_VERSION = "0.36.0";
+const BRIDGE_VERSION = "0.37.0";
 
 // Shared environment for zellij CLI subprocess calls
 function zellijEnv(session?: string): Record<string, string | undefined> {
@@ -60,6 +60,8 @@ const metrics = {
   signalsDuplicate: 0,
   signalsSuppressed: 0,     // Cumulative duplicates prevented from broadcast
   actionsExecuted: 0,
+  ipcActions: new Map<string, number>(),   // action -> count (IPC path)
+  cliActions: new Map<string, number>(),   // action -> count (CLI fallback path)
   tokenRefreshes: 0,
   tokenRevocations: 0,
   starOfficeApply: 0,
@@ -395,6 +397,17 @@ function buildPrometheusMetrics(): string {
   lines.push(`# HELP bridge_actions_executed_total Total Zellij actions executed`);
   lines.push(`# TYPE bridge_actions_executed_total counter`);
   lines.push(`bridge_actions_executed_total ${metrics.actionsExecuted}`);
+  // IPC vs CLI action metrics
+  lines.push(`# HELP bridge_ipc_actions_total Actions executed via direct UDS IPC, by action name`);
+  lines.push(`# TYPE bridge_ipc_actions_total counter`);
+  for (const [action, count] of metrics.ipcActions) {
+    lines.push(`bridge_ipc_actions_total{action="${action}",via="ipc"} ${count}`);
+  }
+  lines.push(`# HELP bridge_cli_actions_total Actions executed via CLI spawn fallback, by action name`);
+  lines.push(`# TYPE bridge_cli_actions_total counter`);
+  for (const [action, count] of metrics.cliActions) {
+    lines.push(`bridge_cli_actions_total{action="${action}",via="cli"} ${count}`);
+  }
   // Token metrics
   lines.push(`# HELP bridge_token_refreshes_total Total Zellij web token refreshes`);
   lines.push(`# TYPE bridge_token_refreshes_total counter`);
@@ -537,6 +550,16 @@ const ALLOWED_ACTIONS = new Set([
   "scroll-up", "scroll-down", "scroll-up-half", "scroll-down-half", "scroll-to-top", "scroll-to-bottom",
   "detach", "switch-session", "rename-session", "save-session",
   "web --status", "web --create-token", "web --create-read-only-token", "web --revoke-token",
+]);
+
+// Actions eligible for direct UDS+protobuf IPC (3.6x faster than CLI spawn)
+const IPC_ELIGIBLE = new Set([
+  "list-tabs", "list-panes", "list-clients", "current-tab-info",
+  "go-to-next-tab", "go-to-previous-tab", "close-tab", "new-tab", "rename-tab",
+  "move-focus", "move-focus-or-tab", "toggle-fullscreen", "toggle-pane-frames",
+  "toggle-floating-panes", "focus-next-pane", "focus-previous-pane",
+  "detach", "no-op", "scroll-up", "scroll-down", "scroll-to-bottom", "scroll-to-top",
+  "clear-screen", "dump-screen", "dump-layout", "save-session", "rename-session",
 ]);
 
 function checkRateLimit(request: Request): string | null {
@@ -909,8 +932,34 @@ const server = Bun.serve({
             return;
           }
           const session = wsSession || config.zellijSessionName || "main";
-          const env = zellijEnv(session);
           try {
+            // Fast path: IPC for eligible actions
+            if (IPC_ELIGIBLE.has(action)) {
+              try {
+                const responses = await ipcSendAction(session, action, args);
+                let stdout = "";
+                for (const r of responses) {
+                  if ("log" in r && (r as Record<string, unknown>).log) {
+                    const logObj = (r as Record<string, unknown>).log as Record<string, unknown>;
+                    if (Array.isArray(logObj.lines)) {
+                      stdout = (logObj.lines as string[]).join("");
+                    }
+                  }
+                }
+                let parsed_output: unknown = stdout.trim();
+                if (typeof parsed_output === "string" && (parsed_output.startsWith("[") || parsed_output.startsWith("{"))) {
+                  try { parsed_output = JSON.parse(parsed_output); } catch { /* keep as string */ }
+                }
+                metrics.actionsExecuted++;
+                metrics.ipcActions.set(action, (metrics.ipcActions.get(action) || 0) + 1);
+                ws.send(JSON.stringify({ type: "action_result", ok: true, action, args, session, exitCode: 0, result: parsed_output || null, via: "ipc" }));
+                break;
+              } catch {
+                // IPC failed — fall through to CLI spawn
+              }
+            }
+            // Slow path: CLI spawn
+            const env = zellijEnv(session);
             const proc = Bun.spawn(["zellij", "action", action, ...args], {
               stdout: "pipe",
               stderr: "pipe",
@@ -924,7 +973,9 @@ const server = Bun.serve({
             if (typeof parsed_output === "string" && (parsed_output.startsWith("[") || parsed_output.startsWith("{"))) {
               try { parsed_output = JSON.parse(parsed_output); } catch { /* keep as string */ }
             }
-            ws.send(JSON.stringify({ type: "action_result", ok: exitCode === 0, action, args, session, exitCode, result: parsed_output || null, stderr: stderr.trim().slice(0, 1024) || null }));
+            metrics.actionsExecuted++;
+            metrics.cliActions.set(action, (metrics.cliActions.get(action) || 0) + 1);
+            ws.send(JSON.stringify({ type: "action_result", ok: exitCode === 0, action, args, session, exitCode, result: parsed_output || null, stderr: stderr.trim().slice(0, 1024) || null, via: "cli" }));
           } catch (error) {
             ws.send(JSON.stringify({ type: "action_result", ok: false, action, error: String(error) }));
           }
@@ -2253,15 +2304,6 @@ setInterval(()=>{fetch("/status").then(r=>r.json()).then(d=>{
       const args = body.args || [];
       const env = zellijEnv(session);
 
-      // Actions that can use direct UDS IPC (3.6x faster than CLI spawn)
-      const IPC_ELIGIBLE = new Set(["list-tabs", "list-panes", "list-clients", "current-tab-info",
-        "go-to-next-tab", "go-to-previous-tab", "close-tab", "new-tab", "rename-tab",
-        "move-focus", "move-focus-or-tab", "toggle-fullscreen", "toggle-pane-frames",
-        "toggle-floating-panes", "focus-next-pane", "focus-previous-pane",
-        "detach", "no-op", "scroll-up", "scroll-down", "scroll-to-bottom", "scroll-to-top",
-        "clear-screen", "dump-screen", "dump-layout", "save-session", "rename-session",
-      ]);
-
       try {
         let stdout = "";
         let stderr = "";
@@ -2290,6 +2332,7 @@ setInterval(()=>{fetch("/status").then(r=>r.json()).then(d=>{
 
             broadcastSSE("action_executed", { action: body.action, args, session, exitCode: 0, via: "ipc" });
             metrics.actionsExecuted++;
+            metrics.ipcActions.set(body.action, (metrics.ipcActions.get(body.action) || 0) + 1);
 
             return json({
               ok: true,
@@ -2334,6 +2377,7 @@ setInterval(()=>{fetch("/status").then(r=>r.json()).then(d=>{
 
         broadcastSSE("action_executed", { action: body.action, args, session, exitCode });
         metrics.actionsExecuted++;
+        metrics.cliActions.set(body.action, (metrics.cliActions.get(body.action) || 0) + 1);
 
         return json({
           ok: true,
@@ -2370,7 +2414,7 @@ setInterval(()=>{fetch("/status").then(r=>r.json()).then(d=>{
         return json({ ok: false, error: "invalid json" }, { status: 400 });
       }
 
-      const results: { index: number; ok: boolean; action: string; exitCode?: number; result?: unknown; stderr?: string | null; error?: string }[] = [];
+      const results: { index: number; ok: boolean; action: string; exitCode?: number; result?: unknown; stderr?: string | null; error?: string; via?: string }[] = [];
       // Run actions concurrently — each is independent, reduces wall-clock from N*latency to max(latency)
       const batchPromises = actions.map(async ({ action, args: rawArgs, session: rawSession }, i) => {
         if (!action || !ALLOWED_ACTIONS.has(action)) {
@@ -2378,8 +2422,33 @@ setInterval(()=>{fetch("/status").then(r=>r.json()).then(d=>{
         }
         const session = rawSession || config.zellijSessionName || "main";
         const args = rawArgs || [];
-        const env = zellijEnv(session);
         try {
+          // Fast path: IPC for eligible actions
+          if (IPC_ELIGIBLE.has(action)) {
+            try {
+              const responses = await ipcSendAction(session, action, args);
+              let stdout = "";
+              for (const r of responses) {
+                if ("log" in r && (r as Record<string, unknown>).log) {
+                  const logObj = (r as Record<string, unknown>).log as Record<string, unknown>;
+                  if (Array.isArray(logObj.lines)) {
+                    stdout = (logObj.lines as string[]).join("");
+                  }
+                }
+              }
+              let parsed: unknown = stdout.trim();
+              if (typeof parsed === "string" && (parsed.startsWith("[") || parsed.startsWith("{"))) {
+                try { parsed = JSON.parse(parsed); } catch { /* keep as string */ }
+              }
+              metrics.actionsExecuted++;
+              metrics.ipcActions.set(action, (metrics.ipcActions.get(action) || 0) + 1);
+              return { index: i, ok: true, action, exitCode: 0, result: parsed || null, via: "ipc" };
+            } catch {
+              // IPC failed — fall through to CLI spawn
+            }
+          }
+          // Slow path: CLI spawn (fallback for IPC failures and non-eligible actions)
+          const env = zellijEnv(session);
           const cmd = ["zellij", "action", action, ...args];
           const proc = Bun.spawn(cmd, { env, stdout: "pipe", stderr: "pipe" });
           const stdout = await new Response(proc.stdout).text();
@@ -2390,7 +2459,8 @@ setInterval(()=>{fetch("/status").then(r=>r.json()).then(d=>{
             try { parsed = JSON.parse(parsed); } catch { /* keep as string */ }
           }
           metrics.actionsExecuted++;
-          return { index: i, ok: exitCode === 0, action, exitCode, result: parsed || null, stderr: stderr.trim() || null };
+          metrics.cliActions.set(action, (metrics.cliActions.get(action) || 0) + 1);
+          return { index: i, ok: exitCode === 0, action, exitCode, result: parsed || null, stderr: stderr.trim() || null, via: "cli" };
         } catch (error) {
           return { index: i, ok: false, action, error: error instanceof Error ? error.message : String(error) };
         }
