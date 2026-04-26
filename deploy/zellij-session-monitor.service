@@ -21,7 +21,6 @@ StandardError=append:/tmp/zellij-monitor.log
 
 # Security hardening
 NoNewPrivileges=yes
-ProtectHome=read-only
 # PrivateTmp breaks Zellij socket access at /tmp/zellij-0/
 # PrivateTmp=yes
 
