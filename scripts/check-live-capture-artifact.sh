@@ -6,14 +6,20 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 CAPTURE_BATCH="${CAPTURE_BATCH:-safe-lifecycle}"
 EVENTS_LOG="${REPO_ROOT}/tmp/events.ndjson"
 REPORT_PATH=""
+SSE_PROOF_PATH=""
 
 usage() {
   cat <<EOF
-Usage: bash scripts/check-live-capture-artifact.sh [--batch <name>] [--report <path>] [events.ndjson]
+Usage: bash scripts/check-live-capture-artifact.sh [--batch <name>] [--report <path>] [--sse-proof <path>] [events.ndjson]
 
 Reads a bridge event log and reports which expected live-runtime capture events
 were observed. This checker is read-only: it does not start free-code, create
-teams, request permissions, or trigger hooks.
+teams, request permissions, open SSE connections, or trigger hooks.
+
+Options:
+  --batch <name>      Expected event batch to verify
+  --report <path>    Write a markdown report
+  --sse-proof <path> Include key-only proof from a saved /events SSE transcript
 
 Batches:
   safe-lifecycle    Subagent/team/permission notification sequence (default)
@@ -55,6 +61,18 @@ while [[ $# -gt 0 ]]; do
       REPORT_PATH="${1#--report=}"
       shift
       ;;
+    --sse-proof)
+      if [[ -z "${2:-}" ]]; then
+        echo "[live-capture-check] --sse-proof requires a path" >&2
+        exit 1
+      fi
+      SSE_PROOF_PATH="$2"
+      shift 2
+      ;;
+    --sse-proof=*)
+      SSE_PROOF_PATH="${1#--sse-proof=}"
+      shift
+      ;;
     --*)
       echo "[live-capture-check] unknown option: $1" >&2
       usage >&2
@@ -73,7 +91,12 @@ if [[ ! -f "${EVENTS_LOG}" ]]; then
   exit 1
 fi
 
-python3 - "${EVENTS_LOG}" "${CAPTURE_BATCH}" "${REPORT_PATH}" <<'PY'
+if [[ -n "${SSE_PROOF_PATH}" && ! -f "${SSE_PROOF_PATH}" ]]; then
+  echo "[live-capture-check] SSE proof not found: ${SSE_PROOF_PATH}" >&2
+  exit 1
+fi
+
+python3 - "${EVENTS_LOG}" "${CAPTURE_BATCH}" "${REPORT_PATH}" "${SSE_PROOF_PATH}" <<'PY'
 import json
 import sys
 from collections import Counter, defaultdict
@@ -83,6 +106,7 @@ from pathlib import Path
 path = Path(sys.argv[1])
 batch = sys.argv[2]
 report_path = Path(sys.argv[3]) if sys.argv[3] else None
+sse_proof_path = Path(sys.argv[4]) if sys.argv[4] else None
 canonical = [
     "PreToolUse",
     "PostToolUse",
@@ -112,6 +136,96 @@ canonical = [
     "CwdChanged",
     "FileChanged",
 ]
+common_payload_keys = {
+    "additional_context",
+    "agent_id",
+    "agent_transcript_path",
+    "agent_type",
+    "cwd",
+    "detail",
+    "error",
+    "error_details",
+    "event_name",
+    "message",
+    "notification_type",
+    "output_file",
+    "output_file_path",
+    "parent_session_id",
+    "permission_decision_reason",
+    "permission_suggestions",
+    "prompt",
+    "reason",
+    "request_id",
+    "session_id",
+    "status",
+    "stop_hook_active",
+    "stop_reason",
+    "summary",
+    "task_description",
+    "task_id",
+    "task_status",
+    "task_subject",
+    "task_summary",
+    "teammate_name",
+    "title",
+    "tool_name",
+    "tool_use_id",
+    "transcript_path",
+    "worktree",
+    "worktree_branch",
+    "worktree_path",
+}
+common_context_keys = {
+    "agentId",
+    "agentTranscriptPath",
+    "agentType",
+    "controlPlaneAgentId",
+    "controlPlaneAllow",
+    "controlPlaneApproved",
+    "controlPlaneDescription",
+    "controlPlaneError",
+    "controlPlaneFeedback",
+    "controlPlaneHost",
+    "controlPlanePermissionUpdatesCount",
+    "controlPlanePlanFilePath",
+    "controlPlaneReason",
+    "controlPlaneRequestId",
+    "controlPlaneSender",
+    "controlPlaneSubtype",
+    "controlPlaneTimestamp",
+    "controlPlaneToolName",
+    "controlPlaneToolUseId",
+    "controlPlaneType",
+    "cwd",
+    "notificationHost",
+    "notificationMessage",
+    "notificationTitle",
+    "notificationToolName",
+    "notificationType",
+    "notificationWorkerName",
+    "outputFilePath",
+    "parentSessionId",
+    "permissionSuggestionsCount",
+    "rawToolName",
+    "stopHookActive",
+    "taskId",
+    "taskStatus",
+    "taskSummary",
+    "teamName",
+    "teammateName",
+    "teammateSummary",
+    "transcriptPath",
+    "worktreeBranch",
+    "worktreePath",
+}
+expected_payload_keys_by_event = {
+    event_name: set(common_payload_keys)
+    for event_name in canonical
+}
+expected_context_keys_by_event = {
+    event_name: set(common_context_keys)
+    for event_name in canonical
+}
 required_by_batch = {
     "safe-lifecycle": [
         "SubagentStart",
@@ -197,6 +311,16 @@ counts = Counter(event["event"] for event in events)
 observed = set(counts)
 missing_required = [event for event in required if event not in observed]
 missing_optional = [event for event in optional if event not in observed]
+unknown_payload_keys_by_event = {
+    event_name: payload_keys_by_event[event_name] - expected_payload_keys_by_event.get(event_name, set())
+    for event_name in observed
+}
+unknown_context_keys_by_event = {
+    event_name: context_keys_by_event[event_name] - expected_context_keys_by_event.get(event_name, set())
+    for event_name in observed
+}
+unknown_payload_key_count = sum(len(keys) for keys in unknown_payload_keys_by_event.values())
+unknown_context_key_count = sum(len(keys) for keys in unknown_context_keys_by_event.values())
 
 positions = []
 last_index = -1
@@ -216,6 +340,25 @@ for event_name in required:
 sequence_ok = bool(positions)
 status = "pass" if not missing_required else "missing-required-events"
 
+sse_proof = None
+if sse_proof_path:
+    sse_text = sse_proof_path.read_text(encoding="utf-8", errors="replace")
+    sse_event_count = sse_text.count("\nevent: signal")
+    if sse_text.startswith("event: signal"):
+        sse_event_count += 1
+    sse_data_count = sse_text.count("\ndata: ")
+    if sse_text.startswith("data: "):
+        sse_data_count += 1
+    sse_proof = {
+        "path": str(sse_proof_path),
+        "status_200": "Status: 200" in sse_text,
+        "event_stream_header": "text/event-stream" in sse_text,
+        "no_cache_header": "no-cache" in sse_text,
+        "signal_events": sse_event_count,
+        "data_lines": sse_data_count,
+        "session_ids": sorted(session for session in {event["session"] for event in events if event.get("session")} if session and session in sse_text),
+    }
+
 print(f"[live-capture-check] artifact: {path}")
 print(f"[live-capture-check] batch: {batch}")
 print(f"[live-capture-check] mapped events: {len(events)}")
@@ -233,6 +376,16 @@ for event_name in sorted(counts):
     context_keys = ", ".join(sorted(context_keys_by_event[event_name])) or "none"
     print(f"  - {event_name}: payload=[{payload_keys}] context=[{context_keys}]")
 
+print("[live-capture-check] unknown key drift:")
+if unknown_payload_key_count == 0 and unknown_context_key_count == 0:
+    print("  - none")
+else:
+    for event_name in sorted(counts):
+        payload_keys = ", ".join(sorted(unknown_payload_keys_by_event[event_name])) or "none"
+        context_keys = ", ".join(sorted(unknown_context_keys_by_event[event_name])) or "none"
+        if payload_keys != "none" or context_keys != "none":
+            print(f"  - {event_name}: payload=[{payload_keys}] context=[{context_keys}]")
+
 print("[live-capture-check] required events:")
 for event_name in required:
     event_status = "ok" if event_name in observed else "missing"
@@ -248,6 +401,17 @@ if sequence_ok:
 else:
     print("[live-capture-check] required sequence order: incomplete")
 
+if sse_proof:
+    print("[live-capture-check] SSE proof:")
+    print(f"  - path: {sse_proof['path']}")
+    print(f"  - status 200: {'ok' if sse_proof['status_200'] else 'missing'}")
+    print(f"  - event-stream header: {'ok' if sse_proof['event_stream_header'] else 'missing'}")
+    print(f"  - no-cache header: {'ok' if sse_proof['no_cache_header'] else 'missing'}")
+    print(f"  - signal events: {sse_proof['signal_events']}")
+    print(f"  - data lines: {sse_proof['data_lines']}")
+    matched_sessions = ", ".join(sse_proof["session_ids"]) or "none"
+    print(f"  - matched artifact sessions: {matched_sessions}")
+
 if report_path:
     report_path.parent.mkdir(parents=True, exist_ok=True)
     generated_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
@@ -260,6 +424,9 @@ if report_path:
         f"- Status: `{status}`.",
         f"- Mapped events: {len(events)}.",
         f"- Missing required events: {len(missing_required)}.",
+        f"- Unknown payload keys: {unknown_payload_key_count}.",
+        f"- Unknown context keys: {unknown_context_key_count}.",
+        f"- SSE proof: {'provided' if sse_proof else 'not provided'}.",
         "",
         "## Artifact",
         "",
@@ -303,6 +470,24 @@ if report_path:
 
     lines.extend([
         "",
+        "## Unknown Key Drift",
+        "",
+        "This section lists key names observed outside the checker allowlist. It still omits values.",
+        "",
+        "| Event | Unknown raw payload keys | Unknown normalized context keys |",
+        "|-------|--------------------------|---------------------------------|",
+    ])
+    if unknown_payload_key_count == 0 and unknown_context_key_count == 0:
+        lines.append("| none | none | none |")
+    else:
+        for event_name in sorted(counts):
+            payload_keys = ", ".join(f"`{key}`" for key in sorted(unknown_payload_keys_by_event[event_name])) or "none"
+            context_keys = ", ".join(f"`{key}`" for key in sorted(unknown_context_keys_by_event[event_name])) or "none"
+            if payload_keys != "none" or context_keys != "none":
+                lines.append(f"| `{event_name}` | {payload_keys} | {context_keys} |")
+
+    lines.extend([
+        "",
         "## Sequence Check",
         "",
         f"Required sequence order: `{'ok' if sequence_ok else 'incomplete'}`.",
@@ -324,6 +509,23 @@ if report_path:
         for event_name in missing_optional:
             lines.append(f"- `{event_name}`")
         lines.append("")
+
+    if sse_proof:
+        matched_sessions = ", ".join(f"`{session}`" for session in sse_proof["session_ids"]) or "none"
+        lines.extend([
+            "## SSE Proof",
+            "",
+            "This section summarizes a saved `/events` SSE transcript by checking headers, event markers, data-line count, and whether captured artifact session IDs also appear in the SSE transcript. It does not include raw SSE payload values.",
+            "",
+            f"- Path: `{sse_proof['path']}`",
+            f"- Status 200: `{'ok' if sse_proof['status_200'] else 'missing'}`",
+            f"- Event-stream header: `{'ok' if sse_proof['event_stream_header'] else 'missing'}`",
+            f"- No-cache header: `{'ok' if sse_proof['no_cache_header'] else 'missing'}`",
+            f"- Signal events: {sse_proof['signal_events']}",
+            f"- Data lines: {sse_proof['data_lines']}",
+            f"- Matched artifact sessions: {matched_sessions}",
+            "",
+        ])
 
     lines.extend([
         "## Interpretation",

@@ -101,7 +101,7 @@ bun run check:live-artifact
 # or: bash ./scripts/check-live-capture-artifact.sh --batch safe-lifecycle --report tmp/live-capture-report.md tmp/events.ndjson
 ```
 
-The checker reports observed hook names, key-only payload/context shapes, missing required events for the selected capture batch, and whether that batch's expected sequence appears in order. Pass `--report` to write a markdown summary. The interactive helper also runs this read-only check automatically after the runtime exits using the selected `CAPTURE_BATCH` and writes `tmp/live-capture-report.md`; set `POST_CAPTURE_CHECK=false` to skip it or override `POST_CAPTURE_REPORT` for a different report path.
+The checker reports observed hook names, key-only payload/context shapes, unknown key drift against the mapper allowlist, missing required events for the selected capture batch, and whether that batch's expected sequence appears in order. Pass `--report` to write a markdown summary. If you saved a `/events` SSE transcript from the same run, pass `--sse-proof <path>` to add key-only SSE proof: status/header checks, signal-event count, data-line count, and matched artifact session IDs. The interactive helper also runs this read-only check automatically after the runtime exits using the selected `CAPTURE_BATCH` and writes `tmp/live-capture-report.md`; set `POST_CAPTURE_CHECK=false` to skip it or override `POST_CAPTURE_REPORT` for a different report path. Set `CAPTURE_SSE_PROOF=true` to have the helper save `tmp/live-sse-proof.txt` during the live run and include it in the post-capture report.
 
 7. Attach a Zellij session rooted in the local `free-code` workspace:
 

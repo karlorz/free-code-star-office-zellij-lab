@@ -21,6 +21,8 @@ EVENTS_LOG="${REPO_ROOT}/tmp/events.ndjson"
 BRIDGE_LOG="${REPO_ROOT}/tmp/live-bridge.log"
 POST_CAPTURE_CHECK="${POST_CAPTURE_CHECK:-true}"
 POST_CAPTURE_REPORT="${POST_CAPTURE_REPORT:-${REPO_ROOT}/tmp/live-capture-report.md}"
+CAPTURE_SSE_PROOF="${CAPTURE_SSE_PROOF:-false}"
+SSE_PROOF_PATH="${SSE_PROOF_PATH:-${REPO_ROOT}/tmp/live-sse-proof.txt}"
 
 if [[ -z "${LEADER_PROMPT:-}" ]]; then
   LEADER_PROMPT="Use the team tool now. Create a team named notif-capture. Then spawn one worker named worker-1 in that team with cwd set to ${REPO_ROOT}. Have the worker run a Bash tool call for: touch worker-permission-probe.txt. After dispatching the worker, do nothing else and wait so leader-side notifications can appear."
@@ -56,6 +58,8 @@ Environment overrides:
   ALLOW_RISKY_CAPTURE  Default: false; required for risky trigger guidance
   POST_CAPTURE_CHECK   Default: true; run read-only artifact checker after runtime exits
   POST_CAPTURE_REPORT  Default: <lab repo>/tmp/live-capture-report.md
+  CAPTURE_SSE_PROOF    Default: false; save a /events SSE transcript during runtime
+  SSE_PROOF_PATH       Default: <lab repo>/tmp/live-sse-proof.txt
 EOF
 }
 
@@ -195,6 +199,10 @@ if [[ ! -d "${PLUGIN_DIR}" ]]; then
 fi
 
 cleanup() {
+  if [[ -n "${SSE_PROOF_PID:-}" ]]; then
+    kill "${SSE_PROOF_PID}" >/dev/null 2>&1 || true
+    wait "${SSE_PROOF_PID}" >/dev/null 2>&1 || true
+  fi
   if [[ -n "${BRIDGE_PID:-}" ]]; then
     kill "${BRIDGE_PID}" >/dev/null 2>&1 || true
     wait "${BRIDGE_PID}" >/dev/null 2>&1 || true
@@ -248,6 +256,57 @@ fail_bridge_start() {
   echo "bridge failed to start on ${BRIDGE_URL}" >&2
   cat "${BRIDGE_LOG}" >&2
   exit 1
+}
+
+start_sse_proof_capture() {
+  if [[ "${CAPTURE_SSE_PROOF}" != "true" ]]; then
+    return 0
+  fi
+
+  : > "${SSE_PROOF_PATH}"
+  python3 -u - "${BRIDGE_URL}" >"${SSE_PROOF_PATH}" 2>&1 <<'PY' &
+import http.client
+import sys
+
+url_parts = sys.argv[1].replace("http://", "").split(":", 1)
+host = url_parts[0]
+port = int(url_parts[1])
+
+conn = http.client.HTTPConnection(host, port)
+conn.request("GET", "/events")
+resp = conn.getresponse()
+print(f"Status: {resp.status}", flush=True)
+print(f"Content-Type: {resp.getheader('Content-Type')}", flush=True)
+print(f"Cache-Control: {resp.getheader('Cache-Control')}", flush=True)
+
+try:
+    while True:
+        chunk = resp.read(1)
+        if not chunk:
+            break
+        sys.stdout.buffer.write(chunk)
+        sys.stdout.buffer.flush()
+except Exception:
+    pass
+finally:
+    conn.close()
+PY
+  SSE_PROOF_PID=$!
+  sleep 0.5
+  if ! kill -0 "${SSE_PROOF_PID}" >/dev/null 2>&1; then
+    echo "SSE proof capture failed to start" >&2
+    cat "${SSE_PROOF_PATH}" >&2
+    exit 1
+  fi
+}
+
+stop_sse_proof_capture() {
+  if [[ -z "${SSE_PROOF_PID:-}" ]]; then
+    return 0
+  fi
+  kill "${SSE_PROOF_PID}" >/dev/null 2>&1 || true
+  wait "${SSE_PROOF_PID}" >/dev/null 2>&1 || true
+  unset SSE_PROOF_PID
 }
 
 mkdir -p "${REPO_ROOT}/tmp"
@@ -319,6 +378,9 @@ echo "[interactive-capture] free-code args: ${runtime_args[*]}"
 echo "[interactive-capture] sg01 Zellij web: ${ZELLIJ_WEB_URL}"
 echo "[interactive-capture] sg01 Zellij session: ${zellij_session_label}"
 echo "[interactive-capture] sg01 Zellij web token: ${zellij_token_status}"
+if [[ "${CAPTURE_SSE_PROOF}" == "true" ]]; then
+  echo "[interactive-capture] SSE proof: ${SSE_PROOF_PATH}"
+fi
 echo "[interactive-capture] operator checklist:"
 echo "  1. Open the sg01 Zellij web URL above."
 echo "  2. Provide the Zellij web token in the browser/operator flow when prompted; do not paste it into this repo."
@@ -329,12 +391,16 @@ print_batch_guidance
 echo "[interactive-capture] recommended leader prompt:"
 printf '%s\n' "${LEADER_PROMPT}"
 
+start_sse_proof_capture
+
 runtime_status=0
 (
   cd "${FREE_CODE_ROOT}"
   env "${runtime_env[@]}" \
     bun run "${FREE_CODE_ENTRYPOINT}" "${plugin_args[@]}" "${runtime_args[@]}"
 ) || runtime_status=$?
+
+stop_sse_proof_capture
 
 cat <<EOF
 [interactive-capture] capture finished
@@ -347,10 +413,17 @@ cat <<EOF
 [interactive-capture] bridge log: ${BRIDGE_LOG}
 [interactive-capture] report: ${POST_CAPTURE_REPORT}
 EOF
+if [[ "${CAPTURE_SSE_PROOF}" == "true" ]]; then
+  echo "[interactive-capture] SSE proof: ${SSE_PROOF_PATH}"
+fi
 
 if [[ "${POST_CAPTURE_CHECK}" == "true" ]]; then
   echo "[interactive-capture] running read-only post-capture artifact check"
-  if ! bash "${SCRIPT_DIR}/check-live-capture-artifact.sh" --batch "${CAPTURE_BATCH}" --report "${POST_CAPTURE_REPORT}" "${EVENTS_LOG}"; then
+  checker_args=(--batch "${CAPTURE_BATCH}" --report "${POST_CAPTURE_REPORT}")
+  if [[ "${CAPTURE_SSE_PROOF}" == "true" ]]; then
+    checker_args+=(--sse-proof "${SSE_PROOF_PATH}")
+  fi
+  if ! bash "${SCRIPT_DIR}/check-live-capture-artifact.sh" "${checker_args[@]}" "${EVENTS_LOG}"; then
     echo "[interactive-capture] post-capture artifact check reported missing live events for batch: ${CAPTURE_BATCH}" >&2
   fi
 fi
