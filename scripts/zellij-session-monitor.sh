@@ -32,8 +32,8 @@ echo "[zellij-monitor] watching session: ${SESSION_NAME} interval: ${POLL_INTERV
 
 while true; do
   # Get pane info via JSON
-  pane_json="$(ZELLIJ_SESSION_NAME="$SESSION_NAME" zellij action list-panes --json 2>/dev/null || echo '[]')"
-  if [[ "$pane_json" != '[]' ]]; then
+  pane_json="$(ZELLIJ_SESSION_NAME="$SESSION_NAME" zellij action list-panes --json 2>/dev/null)"
+  if [[ -n "$pane_json" ]]; then
     pane_count="$(echo "$pane_json" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(sum(1 for p in d if not p.get("is_plugin")))')"
     if [[ "$pane_count" -ne "$last_pane_count" ]]; then
       focused="$(echo "$pane_json" | python3 -c '
@@ -48,8 +48,8 @@ print(json.dumps(titles))
   fi
 
   # Get tab info via JSON
-  tab_json="$(ZELLIJ_SESSION_NAME="$SESSION_NAME" zellij action list-tabs --json 2>/dev/null || echo '[]')"
-  if [[ "$tab_json" != '[]' ]]; then
+  tab_json="$(ZELLIJ_SESSION_NAME="$SESSION_NAME" zellij action list-tabs --json 2>/dev/null)"
+  if [[ -n "$tab_json" ]]; then
     tab_count="$(echo "$tab_json" | python3 -c 'import json,sys; print(len(json.load(sys.stdin)))')"
     active_tab="$(echo "$tab_json" | python3 -c '
 import json, sys
@@ -59,7 +59,11 @@ for t in d:
         print(t.get("name",""))
         break
 else:
-    print("")
+    # No attached client means no tab is "active" — use first tab
+    if d:
+        print(d[0].get("name",""))
+    else:
+        print("")
 ' 2>/dev/null || echo '')"
     if [[ "$tab_count" -ne "$last_tab_count" || "$active_tab" != "$last_active_tab" ]]; then
       tab_names="$(echo "$tab_json" | python3 -c '
