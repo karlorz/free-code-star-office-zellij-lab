@@ -386,7 +386,7 @@ const server = Bun.serve({
       // via query parameter as fallback: /ws?secret=xxx
       const headerSecret = request.headers.get("x-bridge-secret");
       const querySecret = url.searchParams.get("secret");
-      const authed = isAuthorized(request) || (config.secret && querySecret === config.secret);
+      const authed = isAuthorized(request) || (config.secret && querySecret && timingSafeCompare(querySecret, config.secret));
       const upgraded = srv.upgrade(request, {
         data: {
           authenticated: authed,
