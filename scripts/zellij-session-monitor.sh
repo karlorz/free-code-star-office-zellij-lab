@@ -51,8 +51,12 @@ last_web_status=''
 
 post_event() {
   local json_body="$1"
+  local headers=(-H 'Content-Type: application/json')
+  if [[ -n "${BRIDGE_SECRET:-}" ]]; then
+    headers+=(-H "x-bridge-secret: ${BRIDGE_SECRET}")
+  fi
   curl -sfS -X POST "${BRIDGE_URL}${HOOK_PATH}" \
-    -H 'Content-Type: application/json' \
+    "${headers[@]}" \
     -d "$json_body" >/dev/null 2>&1 || true
 }
 

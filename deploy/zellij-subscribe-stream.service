@@ -6,11 +6,12 @@ Wants=star-office-bridge.service
 [Service]
 Type=simple
 ExecStartPre=/bin/sleep 3
-ExecStart=/bin/bash -c 'export ZELLIJ_SESSION_NAME=main HOME=/root XDG_RUNTIME_DIR=/run/user/0 BRIDGE_URL=http://127.0.0.1:4317; exec /root/free-code-star-office-zellij-lab/scripts/zellij-subscribe-stream.sh'
+ExecStart=/bin/bash -c 'export ZELLIJ_SESSION_NAME=main HOME=/root XDG_RUNTIME_DIR=/run/user/0 BRIDGE_URL=http://127.0.0.1:4317 BRIDGE_SECRET=star-office-bridge-2026; exec /root/free-code-star-office-zellij-lab/scripts/zellij-subscribe-stream.sh'
 WorkingDirectory=/root/free-code-star-office-zellij-lab
 
 # Environment
 Environment=BRIDGE_URL=http://127.0.0.1:4317
+Environment=BRIDGE_SECRET=star-office-bridge-2026
 Environment=ZELLIJ_SESSION_NAME=main
 Environment=CONTENT_DEBOUNCE=3
 Environment=PATH=/usr/local/bin:/usr/bin:/bin
