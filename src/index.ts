@@ -741,6 +741,35 @@ async function handleRequest(request: Request, url: URL): Promise<Response> {
       }
     }
 
+    // Alertmanager webhook — must be before global POST auth check (Alertmanager cannot send custom headers)
+    if (request.method === "POST" && url.pathname === "/alert") {
+      let body: Record<string, unknown>;
+      try {
+        body = await request.json() as Record<string, unknown>;
+      } catch {
+        return json({ ok: false, error: "invalid json" }, { status: 400 });
+      }
+      const status = body.status as string || "unknown";
+      const alerts = (body.alerts || []) as Record<string, unknown>[];
+      const summary = {
+        status,
+        alertCount: alerts.length,
+        alerts: alerts.map(a => ({
+          status: a.status,
+          labels: a.labels,
+          annotations: a.annotations,
+          startsAt: a.startsAt,
+          endsAt: a.endsAt,
+        })),
+        externalURL: body.externalURL,
+        groupKey: body.groupKey,
+        receiver: body.receiver,
+      };
+      broadcastSSE("alert", summary);
+      console.log(`[bridge] alert webhook: status=${status} count=${alerts.length}`);
+      return json({ ok: true, broadcast: true });
+    }
+
     if (!isAuthorized(request) && request.method !== "GET") {
       return json({ ok: false, error: "unauthorized" }, { status: 401, headers: CORS_HEADERS });
     }
@@ -1810,35 +1839,6 @@ setInterval(()=>{fetch("/status").then(r=>r.json()).then(d=>{
       };
 
       return processSignal(signal, "manual");
-    }
-
-    // Alertmanager webhook endpoint — receives alerts and broadcasts as SSE events
-    if (request.method === "POST" && url.pathname === "/alert") {
-      let body: Record<string, unknown>;
-      try {
-        body = await request.json() as Record<string, unknown>;
-      } catch {
-        return json({ ok: false, error: "invalid json" }, { status: 400 });
-      }
-      const status = body.status as string || "unknown";
-      const alerts = (body.alerts || []) as Record<string, unknown>[];
-      const summary = {
-        status,
-        alertCount: alerts.length,
-        alerts: alerts.map(a => ({
-          status: a.status,
-          labels: a.labels,
-          annotations: a.annotations,
-          startsAt: a.startsAt,
-          endsAt: a.endsAt,
-        })),
-        externalURL: body.externalURL,
-        groupKey: body.groupKey,
-        receiver: body.receiver,
-      };
-      broadcastSSE("alert", summary);
-      console.log(`[bridge] alert webhook: status=${status} count=${alerts.length}`);
-      return json({ ok: true, broadcast: true });
     }
 
     return json({ ok: false, error: "not found" }, { status: 404 });
