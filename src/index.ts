@@ -17,7 +17,7 @@ const SSE_MAX_BUFFERED_MESSAGES = 32; // Drop clients with more than this many b
 let sseEventSeq = 0;
 let sseClientSeq = 0;
 const sseClients = new Map<number, { controller: ReadableStreamDefaultController; buffered: number; connectedAt: number }>();
-const BRIDGE_VERSION = "0.50.0";
+const BRIDGE_VERSION = "0.51.0";
 
 // Shared environment for zellij CLI subprocess calls
 function zellijEnv(session?: string): Record<string, string | undefined> {
@@ -799,7 +799,7 @@ async function attemptZellijRecovery(session: string): Promise<boolean> {
   metrics.zellijRecoveryAttempts++;
   try {
     const proc = Bun.spawn({
-      cmd: ["zellij", "attach", "-c", session],
+      cmd: ["zellij", "attach", "-c", "--force-run-commands", session],
       env: zellijEnv(session),
       stdout: "ignore",
       stderr: "pipe",
@@ -1560,6 +1560,25 @@ setInterval(()=>{fetch("/status").then(r=>r.json()).then(d=>{
         freedHeap: before.heapUsed - after.heapUsed,
         freedRss: before.rss - after.rss,
       });
+    }
+
+    // POST /recover — manually trigger zellij session recovery
+    if (request.method === "POST" && url.pathname === "/recover") {
+      if (!isAuthorized(request)) {
+        return json({ ok: false, error: "authentication required" }, { status: 401 });
+      }
+      const session = url.searchParams.get("session") || config.zellijSessionName || "main";
+      if (metrics.zellijSessionHealthy === 1) {
+        return json({ ok: true, recovered: false, reason: "session already healthy" });
+      }
+      // Reset cooldown to allow immediate attempt
+      zellijLastRecoveryAttempt = 0;
+      try {
+        const success = await attemptZellijRecovery(session);
+        return json({ ok: true, recovered: success, session });
+      } catch (err) {
+        return json({ ok: false, error: err instanceof Error ? err.message : String(err) }, { status: 500 });
+      }
     }
 
     if (request.method === "GET" && url.pathname === "/debug/heap-snapshot") {
@@ -2792,6 +2811,7 @@ const ROUTE_TABLE: { method: string; path: string; description: string; auth: bo
   { method: "GET", path: "/metrics/combined", description: "Bridge + Caddy merged metrics (single scrape target)", auth: false },
   { method: "GET", path: "/version", description: "Bridge version, runtime, arch", auth: false },
   { method: "GET", path: "/diagnostics", description: "Stale pipe detection, log size, dedup summary (authenticated)", auth: true },
+  { method: "POST", path: "/recover", description: "Manually trigger zellij session recovery (authenticated)", auth: true },
   { method: "POST", path: "/debug/gc", description: "Trigger Bun.gc() for production debugging (authenticated)", auth: true },
   { method: "GET", path: "/debug/heap-snapshot", description: "Generate heap snapshot for leak debugging (authenticated)", auth: true },
   { method: "GET", path: "/ws", description: "WebSocket for bidirectional control (upgrade, auth optional — unauth=read-only)", auth: false },

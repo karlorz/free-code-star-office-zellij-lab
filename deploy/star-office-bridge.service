@@ -20,9 +20,14 @@ Environment=BRIDGE_ENV_FILE=/root/free-code-star-office-zellij-lab/.env.persist
 # Secret: loaded from credstore for BRIDGE_SECRET, not visible via systemctl show
 LoadCredential=bridge-secret:/etc/credstore/star-office-bridge.secret
 
-# Restart policy
+# Restart policy with exponential backoff (systemd 254+)
 Restart=on-failure
-RestartSec=3
+RestartSec=5s
+RestartSteps=4
+RestartMaxDelaySec=160s
+# Prevent restart storms: permanently fail after 5 restarts in 300s
+StartLimitBurst=5
+StartLimitIntervalSec=300
 UMask=0077
 
 # Graceful shutdown: give 30s for server.stop() + SSE drain before SIGKILL
