@@ -2,17 +2,85 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-FREE_CODE_ROOT="${FREE_CODE_ROOT:-/Users/karlchow/Desktop/code/free-code}"
+FREE_CODE_ROOT="${FREE_CODE_ROOT:-}"
+if [[ -z "${FREE_CODE_ROOT}" ]]; then
+  for candidate in \
+    "/Users/karlchow/Desktop/code/free-code" \
+    "$HOME/free-code" \
+    "$HOME/code/free-code"; do
+    if [[ -d "${candidate}" ]]; then
+      FREE_CODE_ROOT="${candidate}"
+      break
+    fi
+  done
+fi
 CORE_TYPES="${FREE_CODE_ROOT}/src/entrypoints/sdk/coreTypes.ts"
 HOOKS_JSON="${REPO_ROOT}/plugins/claude-star-office-bridge/hooks/hooks.json"
 STATE_MAPPER="${REPO_ROOT}/src/stateMapper.ts"
 
-for path in "${CORE_TYPES}" "${HOOKS_JSON}" "${STATE_MAPPER}"; do
+for path in "${HOOKS_JSON}" "${STATE_MAPPER}"; do
   if [[ ! -f "${path}" ]]; then
     echo "[hook-coverage] required file missing: ${path}" >&2
     exit 1
   fi
 done
+
+if [[ -z "${FREE_CODE_ROOT}" ]] || [[ ! -f "${CORE_TYPES}" ]]; then
+  echo "[hook-coverage] free-code not found; using hardcoded 27 canonical event list"
+  python3 - "${HOOKS_JSON}" "${STATE_MAPPER}" <<'PY_FALLBACK'
+import json
+import re
+import sys
+
+hooks_json_path = sys.argv[1]
+state_mapper_path = sys.argv[2]
+
+canonical = [
+    "PreToolUse", "PostToolUse", "PostToolUseFailure",
+    "Notification", "UserPromptSubmit", "SessionStart", "SessionEnd",
+    "Stop", "StopFailure", "SubagentStart", "SubagentStop",
+    "PreCompact", "PostCompact", "PermissionRequest", "PermissionDenied",
+    "Setup", "TeammateIdle", "TaskCreated", "TaskCompleted",
+    "Elicitation", "ElicitationResult", "ConfigChange",
+    "InstructionsLoaded", "CwdChanged", "FileChanged",
+    "WorktreeCreate", "WorktreeRemove",
+]
+
+with open(hooks_json_path, "r", encoding="utf-8") as fh:
+    hooks_data = json.load(fh)
+
+hook_names = set()
+for event_name, entries in hooks_data.get("hooks", {}).items():
+    hook_names.add(event_name)
+
+missing_from_plugin = [name for name in canonical if name not in hook_names]
+extra_in_plugin = [name for name in hook_names if name not in canonical]
+
+if missing_from_plugin:
+    print(f"[hook-coverage] plugin missing events: {', '.join(missing_from_plugin)}", file=sys.stderr)
+    sys.exit(1)
+if extra_in_plugin:
+    print(f"[hook-coverage] plugin has extra events: {', '.join(extra_in_plugin)}", file=sys.stderr)
+    sys.exit(1)
+
+print(f"[hook-coverage] ok: {len(canonical)} free-code events (hardcoded list)")
+print(f"[hook-coverage] plugin subscriptions: {len(hook_names)}")
+
+with open(state_mapper_path, "r", encoding="utf-8") as fh:
+    mapper_text = fh.read()
+
+mapper_cases = set(re.findall(r'case\s+"(\w+)"', mapper_text))
+mapper_hook_cases = [name for name in mapper_cases if name in canonical]
+missing_from_mapper = [name for name in canonical if name not in mapper_cases]
+
+if missing_from_mapper:
+    print(f"[hook-coverage] mapper missing events: {', '.join(missing_from_mapper)}", file=sys.stderr)
+    sys.exit(1)
+
+print(f"[hook-coverage] mapEventToState mappings: {len(mapper_hook_cases)}")
+PY_FALLBACK
+  exit $?
+fi
 
 python3 - "${CORE_TYPES}" "${HOOKS_JSON}" "${STATE_MAPPER}" <<'PY'
 import json
