@@ -1639,6 +1639,60 @@ setInterval(()=>{if(ws&&ws.readyState===1)ws.send(JSON.stringify({type:"ping"}))
       }
     }
 
+    if (request.method === "POST" && url.pathname === "/action/batch") {
+      if (!isAuthorized(request)) {
+        return json({ ok: false, error: "action endpoint requires authentication" }, { status: 401 });
+      }
+      let actions: { action: string; args?: string[]; session?: string }[];
+      try {
+        const body = (await request.json()) as { actions: { action: string; args?: string[]; session?: string }[] };
+        actions = body.actions;
+        if (!Array.isArray(actions) || actions.length === 0) {
+          return json({ ok: false, error: "expected non-empty 'actions' array" }, { status: 400 });
+        }
+        if (actions.length > 20) {
+          return json({ ok: false, error: "batch limit is 20 actions" }, { status: 400 });
+        }
+      } catch {
+        return json({ ok: false, error: "invalid json" }, { status: 400 });
+      }
+
+      const results: { index: number; ok: boolean; action: string; exitCode?: number; result?: unknown; stderr?: string | null; error?: string }[] = [];
+      for (let i = 0; i < actions.length; i++) {
+        const { action, args: rawArgs, session: rawSession } = actions[i];
+        if (!action || !ALLOWED_ACTIONS.has(action)) {
+          results.push({ index: i, ok: false, action: action || "", error: "disallowed action" });
+          continue;
+        }
+        const session = rawSession || config.zellijSessionName || "main";
+        const args = rawArgs || [];
+        const env = {
+          ZELLIJ_SESSION_NAME: session,
+          HOME: process.env.HOME || "/root",
+          XDG_RUNTIME_DIR: process.env.XDG_RUNTIME_DIR || "/run/user/0",
+          PATH: process.env.PATH || "/usr/local/bin:/usr/bin:/bin",
+        };
+        try {
+          const cmd = ["zellij", "action", action, ...args];
+          const proc = Bun.spawn(cmd, { env, stdout: "pipe", stderr: "pipe" });
+          const stdout = await new Response(proc.stdout).text();
+          const stderr = await new Response(proc.stderr).text();
+          const exitCode = await proc.exited;
+          let parsed: unknown = stdout.trim();
+          if (typeof parsed === "string" && (parsed.startsWith("[") || parsed.startsWith("{"))) {
+            try { parsed = JSON.parse(parsed); } catch { /* keep as string */ }
+          }
+          metrics.actionsExecuted++;
+          results.push({ index: i, ok: exitCode === 0, action, exitCode, result: parsed || null, stderr: stderr.trim() || null });
+        } catch (error) {
+          results.push({ index: i, ok: false, action, error: error instanceof Error ? error.message : String(error) });
+        }
+      }
+      const okCount = results.filter(r => r.ok).length;
+      broadcastSSE("action_batch_executed", { total: actions.length, ok: okCount, failed: actions.length - okCount });
+      return json({ ok: okCount === actions.length, total: actions.length, okCount, results });
+    }
+
     if (request.method === "POST" && url.pathname === "/event/manual") {
       let body: {
         sessionId?: string;
@@ -1694,6 +1748,7 @@ const ROUTE_TABLE: { method: string; path: string; description: string; auth: bo
   { method: "GET", path: "/readyz", description: "Readiness probe (503 during shutdown)", auth: false },
   { method: "GET", path: "/action", description: "List allowed Zellij actions", auth: false },
   { method: "POST", path: "/action", description: "Execute Zellij CLI action (whitelisted)", auth: true },
+  { method: "POST", path: "/action/batch", description: "Execute multiple Zellij actions sequentially (max 20)", auth: true },
   { method: "GET", path: "/web", description: "Zellij web config (URL, tokenSet, session)", auth: false },
   { method: "GET", path: "/web/token", description: "Zellij web token (authenticated)", auth: true },
   { method: "POST", path: "/web/token/refresh", description: "Refresh Zellij web token via CLI (authenticated)", auth: true },
