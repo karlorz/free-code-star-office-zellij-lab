@@ -7,6 +7,10 @@
 # using zellij CLI actions polled at a configurable interval.
 set -euo pipefail
 
+# Graceful shutdown on SIGTERM/SIGINT
+_running=true
+trap '_running=false' TERM INT
+
 BRIDGE_URL="${BRIDGE_URL:-http://127.0.0.1:4317}"
 HOOK_PATH="${HOOK_PATH:-/hook/zellij}"
 POLL_INTERVAL="${POLL_INTERVAL:-2}"
@@ -206,6 +210,12 @@ for p in json.load(sys.stdin):
   if [[ "$client_count" -ne "$last_client_count" ]]; then
     post_event "{\"hook_event_name\":\"Elicitation\",\"session_id\":\"zellij-monitor\",\"cwd\":\"/\",\"zellij_event\":\"client_update\",\"client_count\":$client_count}"
     last_client_count="$client_count"
+  fi
+
+  # Check for shutdown signal between poll cycles
+  if [[ "$_running" != "true" ]]; then
+    echo "[zellij-monitor] received shutdown signal, exiting" >&2
+    exit 0
   fi
 
   sleep "$POLL_INTERVAL"

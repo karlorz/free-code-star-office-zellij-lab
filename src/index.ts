@@ -16,6 +16,7 @@ const SSE_REPLAY_CAPACITY = 64;
 const sseClients = new Set<ReadableStreamDefaultController>();
 const sseEventLog: { id: string; event: string; payload: unknown }[] = [];
 const lastSignalByKey = new Map<string, string>();
+const dedupCounts = new Map<string, { seen: number; passed: number }>();
 const encoder = new TextEncoder();
 
 function formatSSE(data: unknown, event?: string, id?: string): Uint8Array {
@@ -119,6 +120,12 @@ async function processSignal(
   const lastHash = lastSignalByKey.get(dedupeKey);
   const isDuplicate = lastHash === contextHash;
   lastSignalByKey.set(dedupeKey, contextHash);
+
+  // Track dedup stats per key
+  const stats = dedupCounts.get(dedupeKey) || { seen: 0, passed: 0 };
+  stats.seen++;
+  if (!isDuplicate) stats.passed++;
+  dedupCounts.set(dedupeKey, stats);
 
   if (isDuplicate) {
     return json({
@@ -289,6 +296,28 @@ const server = Bun.serve({
       return json({
         ok: true,
         session: snapshot,
+      });
+    }
+
+    if (request.method === "GET" && url.pathname === "/stats") {
+      const dedupEntries = Object.fromEntries(
+        [...dedupCounts.entries()].map(([key, val]) => [key, val])
+      );
+      const totalSeen = [...dedupCounts.values()].reduce((sum, s) => sum + s.seen, 0);
+      const totalPassed = [...dedupCounts.values()].reduce((sum, s) => sum + s.passed, 0);
+      return json({
+        ok: true,
+        uptime: process.uptime(),
+        sseClients: sseClients.size,
+        sseEventLogSize: sseEventLog.length,
+        sessions: registry.list().length,
+        dedup: {
+          totalSeen,
+          totalPassed,
+          totalSuppressed: totalSeen - totalPassed,
+          keysTracked: dedupCounts.size,
+          perKey: dedupEntries,
+        },
       });
     }
 
