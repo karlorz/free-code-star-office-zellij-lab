@@ -37,9 +37,9 @@ SyslogIdentifier=zellij-monitor
 # Compensate with other directives below.
 # ProtectHome=read-only
 
-# ProtectSystem: strict with explicit write exceptions for project tmp + zellij cache
-ProtectSystem=strict
-ReadWritePaths=/root/free-code-star-office-zellij-lab/tmp /root/.cache/zellij
+# ProtectSystem: full (read-only /usr, /boot, /etc, /var) — allows /tmp and /root writes
+# strict mode makes /tmp read-only which breaks the monitor's temp file usage
+ProtectSystem=full
 
 # Prevent privilege escalation
 NoNewPrivileges=yes
