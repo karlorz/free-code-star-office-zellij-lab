@@ -229,6 +229,14 @@ const server = Bun.serve({
       const stream = new ReadableStream({
         start(controller) {
           sseClients.add(controller);
+          // Send full snapshot on connect so new clients have current state
+          const snapshot = registry.list();
+          try {
+            controller.enqueue(formatSSE(snapshot, "snapshot", randomUUID()));
+          } catch {
+            sseClients.delete(controller);
+            return;
+          }
           // Replay recent events to new clients if they send Last-Event-ID
           if (lastEventId) {
             const replayIndex = sseEventLog.findIndex((e) => e.id === lastEventId);
@@ -255,6 +263,7 @@ const server = Bun.serve({
         headers: {
           "Content-Type": "text/event-stream",
           "Cache-Control": "no-cache",
+          "X-Accel-Buffering": "no",
         },
       });
     }
@@ -275,6 +284,14 @@ const server = Bun.serve({
 
     if (request.method === "GET" && url.pathname === "/healthz") {
       return new Response("ok", { status: 200, headers: { "content-type": "text/plain" } });
+    }
+
+    if (request.method === "GET" && url.pathname === "/snapshot") {
+      return json({
+        ok: true,
+        sessions: registry.list(),
+        uptime: process.uptime(),
+      });
     }
 
     if (request.method === "GET" && url.pathname === "/sessions") {
