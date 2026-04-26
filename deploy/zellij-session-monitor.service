@@ -12,6 +12,8 @@ Environment=BRIDGE_URL=http://127.0.0.1:4317
 Environment=ZELLIJ_SESSION_NAME=main
 Environment=POLL_INTERVAL=2
 Environment=PATH=/usr/local/bin:/usr/bin:/bin
+Environment=HOME=/root
+Environment=XDG_RUNTIME_DIR=/run/user/0
 Restart=on-failure
 RestartSec=5
 StandardOutput=append:/tmp/zellij-monitor.log
@@ -19,6 +21,7 @@ StandardError=append:/tmp/zellij-monitor.log
 
 # Security hardening
 NoNewPrivileges=yes
+ProtectHome=read-only
 # PrivateTmp breaks Zellij socket access at /tmp/zellij-0/
 # PrivateTmp=yes
 
