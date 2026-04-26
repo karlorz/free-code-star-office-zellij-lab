@@ -17,7 +17,7 @@ const SSE_MAX_BUFFERED_MESSAGES = 32; // Drop clients with more than this many b
 let sseEventSeq = 0;
 let sseClientSeq = 0;
 const sseClients = new Map<number, { controller: ReadableStreamDefaultController; buffered: number; connectedAt: number }>();
-const BRIDGE_VERSION = "0.59.0";
+const BRIDGE_VERSION = "0.60.0";
 
 // Shared environment for zellij CLI subprocess calls
 function zellijEnv(session?: string): Record<string, string | undefined> {
@@ -81,6 +81,7 @@ const metrics = {
   zellijRecoveryAttempts: 0,
   zellijRecoverySuccesses: 0,
   wsClientTimeouts: 0,      // zombie connections cleaned up by heartbeat
+  wsBackpressureDrops: 0,   // slow clients dropped by backpressureLimit
   startTime: Date.now(),
 };
 
@@ -519,6 +520,9 @@ function buildPrometheusMetrics(): string {
   lines.push(`# HELP bridge_ws_client_timeouts_total WebSocket connections closed by heartbeat zombie detection`);
   lines.push(`# TYPE bridge_ws_client_timeouts_total counter`);
   lines.push(`bridge_ws_client_timeouts_total ${metrics.wsClientTimeouts}`);
+  lines.push(`# HELP bridge_ws_backpressure_drops_total WebSocket connections dropped for exceeding backpressure limit`);
+  lines.push(`# TYPE bridge_ws_backpressure_drops_total counter`);
+  lines.push(`bridge_ws_backpressure_drops_total ${metrics.wsBackpressureDrops}`);
   // Heap object count from cached heapStats (JSC engine)
   const heapObjCount = cachedHeapStats?.objectCount as number | undefined;
   if (heapObjCount !== undefined) {
@@ -1080,6 +1084,8 @@ const server = Bun.serve({
     maxPayloadLength: 65536, // 64KB max WS message (default 16MB is too generous for action commands)
     idleTimeout: 0, // Disable Bun's idleTimeout for WS — Bun #26554: sendPings+idleTimeout kills long-lived connections
     sendPings: false, // Disabled: use application-level ping/pong instead (avoids Bun #26554)
+    backpressureLimit: 1024 * 1024, // 1MB buffered per client before close — prevents slow clients from consuming unbounded memory
+    closeOnBackpressureLimit: true, // Drop clients that can't keep up (fire-and-forget publish() has no retry)
     open(ws) {
       const data = ws.data as unknown as { authenticated: boolean; connectedAt: number; sessionId?: string };
       console.log(`[bridge] ws client connected authed=${data.authenticated} session=${data.sessionId || "none"} total=${server.subscriberCount("bridge-events") + 1}`); // secret param intentionally omitted from log
@@ -1210,6 +1216,10 @@ const server = Bun.serve({
       console.log(`[bridge] ws client disconnected code=${code} session=${data.sessionId || "none"} duration=${connDuration}s`);
       metrics.wsClientsCurrent--;
       metrics.wsDisconnects++;
+      // Track backpressure drops separately from normal disconnects
+      if (code === 1018 || (code >= 4000 && code <= 4003)) {
+        metrics.wsBackpressureDrops++;
+      }
       wsClientState.delete(ws);
       ws.unsubscribe("bridge-events");
     },
