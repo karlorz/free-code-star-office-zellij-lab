@@ -26,6 +26,24 @@ const lastSignalByKey = new Map<string, string>();
 const dedupCounts = new Map<string, { seen: number; passed: number }>();
 const encoder = new TextEncoder();
 
+// Prometheus metrics counters
+const metrics = {
+  httpRequestsTotal: new Map<string, number>(),  // path -> count
+  httpResponsesTotal: new Map<string, number>(),  // "path:status" -> count
+  sseBroadcasts: 0,
+  sseClientConnected: 0,
+  sseClientDisconnected: 0,
+  sseClientEvicted: 0,
+  signalsProcessed: 0,
+  signalsDuplicate: 0,
+  actionsExecuted: 0,
+  tokenRefreshes: 0,
+  tokenRevocations: 0,
+  wsConnections: 0,
+  wsMessages: 0,
+  startTime: Date.now(),
+};
+
 function formatSSE(data: unknown, event?: string, id?: number): Uint8Array {
   const parts: string[] = [];
   if (id !== undefined) parts.push(`id: ${id}`);
@@ -38,6 +56,7 @@ function formatSSE(data: unknown, event?: string, id?: number): Uint8Array {
 
 function broadcastSSE(event: string, payload: unknown): number {
   const id = ++sseEventSeq;
+  metrics.sseBroadcasts++;
   return broadcastSSEWithId(id, event, payload);
 }
 
@@ -51,6 +70,7 @@ function broadcastSSEWithId(id: number, event: string, payload: unknown): number
       client.controller.enqueue(message);
       if (client.buffered > SSE_MAX_BUFFERED_MESSAGES) {
         console.warn(`[bridge] dropping slow SSE client ${cid} (${client.buffered} buffered messages)`);
+        metrics.sseClientEvicted++;
         try {
           client.controller.enqueue(formatSSE({ reason: "backpressure", bufferedMessages: client.buffered }, "backpressure"));
           client.controller.close();
@@ -61,6 +81,7 @@ function broadcastSSEWithId(id: number, event: string, payload: unknown): number
       client.buffered++;
       if (client.buffered > SSE_MAX_BUFFERED_MESSAGES) {
         console.warn(`[bridge] dropping stalled SSE client ${cid} (${client.buffered} failed enqueues)`);
+        metrics.sseClientEvicted++;
         sseClients.delete(cid);
       }
     }
@@ -205,6 +226,84 @@ function mapZellijEvent(body: Record<string, unknown>): NormalizedSignal {
   };
 }
 
+function buildPrometheusMetrics(): string {
+  const lines: string[] = [];
+  const uptime = process.uptime();
+  // Process info
+  lines.push(`# HELP bridge_uptime_seconds Process uptime in seconds`);
+  lines.push(`# TYPE bridge_uptime_seconds gauge`);
+  lines.push(`bridge_uptime_seconds ${uptime.toFixed(2)}`);
+  // SSE metrics
+  lines.push(`# HELP bridge_sse_clients_current Current SSE client connections`);
+  lines.push(`# TYPE bridge_sse_clients_current gauge`);
+  lines.push(`bridge_sse_clients_current ${sseClients.size}`);
+  lines.push(`# HELP bridge_sse_broadcasts_total Total SSE broadcast events`);
+  lines.push(`# TYPE bridge_sse_broadcasts_total counter`);
+  lines.push(`bridge_sse_broadcasts_total ${metrics.sseBroadcasts}`);
+  lines.push(`# HELP bridge_sse_client_connected_total Total SSE client connections established`);
+  lines.push(`# TYPE bridge_sse_client_connected_total counter`);
+  lines.push(`bridge_sse_client_connected_total ${metrics.sseClientConnected}`);
+  lines.push(`# HELP bridge_sse_client_disconnected_total Total SSE client disconnections`);
+  lines.push(`# TYPE bridge_sse_client_disconnected_total counter`);
+  lines.push(`bridge_sse_client_disconnected_total ${metrics.sseClientDisconnected}`);
+  lines.push(`# HELP bridge_sse_client_evicted_total Total SSE clients evicted for slow consumption`);
+  lines.push(`# TYPE bridge_sse_client_evicted_total counter`);
+  lines.push(`bridge_sse_client_evicted_total ${metrics.sseClientEvicted}`);
+  lines.push(`# HELP bridge_sse_event_log_size Current event log ring buffer size`);
+  lines.push(`# TYPE bridge_sse_event_log_size gauge`);
+  lines.push(`bridge_sse_event_log_size ${sseEventLog.length}`);
+  // Signal metrics
+  lines.push(`# HELP bridge_signals_processed_total Total signals processed (non-duplicate)`);
+  lines.push(`# TYPE bridge_signals_processed_total counter`);
+  lines.push(`bridge_signals_processed_total ${metrics.signalsProcessed}`);
+  lines.push(`# HELP bridge_signals_duplicate_total Total duplicate signals suppressed`);
+  lines.push(`# TYPE bridge_signals_duplicate_total counter`);
+  lines.push(`bridge_signals_duplicate_total ${metrics.signalsDuplicate}`);
+  lines.push(`# HELP bridge_sessions_current Current active sessions`);
+  lines.push(`# TYPE bridge_sessions_current gauge`);
+  lines.push(`bridge_sessions_current ${registry.list().length}`);
+  // Action metrics
+  lines.push(`# HELP bridge_actions_executed_total Total Zellij actions executed`);
+  lines.push(`# TYPE bridge_actions_executed_total counter`);
+  lines.push(`bridge_actions_executed_total ${metrics.actionsExecuted}`);
+  // Token metrics
+  lines.push(`# HELP bridge_token_refreshes_total Total Zellij web token refreshes`);
+  lines.push(`# TYPE bridge_token_refreshes_total counter`);
+  lines.push(`bridge_token_refreshes_total ${metrics.tokenRefreshes}`);
+  lines.push(`# HELP bridge_token_revocations_total Total Zellij web token revocations`);
+  lines.push(`# TYPE bridge_token_revocations_total counter`);
+  lines.push(`bridge_token_revocations_total ${metrics.tokenRevocations}`);
+  // WebSocket metrics
+  lines.push(`# HELP bridge_ws_connections_total Total WebSocket connections established`);
+  lines.push(`# TYPE bridge_ws_connections_total counter`);
+  lines.push(`bridge_ws_connections_total ${metrics.wsConnections}`);
+  lines.push(`# HELP bridge_ws_messages_total Total WebSocket messages received`);
+  lines.push(`# TYPE bridge_ws_messages_total counter`);
+  lines.push(`bridge_ws_messages_total ${metrics.wsMessages}`);
+  // HTTP request metrics by path
+  lines.push(`# HELP bridge_http_requests_total Total HTTP requests by path`);
+  lines.push(`# TYPE bridge_http_requests_total counter`);
+  for (const [path, count] of metrics.httpRequestsTotal) {
+    lines.push(`bridge_http_requests_total{path="${path}"} ${count}`);
+  }
+  // HTTP response metrics by path and status
+  lines.push(`# HELP bridge_http_responses_total Total HTTP responses by path and status`);
+  lines.push(`# TYPE bridge_http_responses_total counter`);
+  for (const [key, count] of metrics.httpResponsesTotal) {
+    const [path, status] = key.split(":");
+    lines.push(`bridge_http_responses_total{path="${path}",status="${status}"} ${count}`);
+  }
+  // Memory from Bun
+  const mem = process.memoryUsage();
+  lines.push(`# HELP bridge_process_memory_rss_bytes Process RSS memory in bytes`);
+  lines.push(`# TYPE bridge_process_memory_rss_bytes gauge`);
+  lines.push(`bridge_process_memory_rss_bytes ${mem.rss}`);
+  lines.push(`# HELP bridge_process_memory_heap_bytes Process heap memory in bytes`);
+  lines.push(`# TYPE bridge_process_memory_heap_bytes gauge`);
+  lines.push(`bridge_process_memory_heap_bytes ${mem.heapUsed}`);
+  return lines.join("\n") + "\n";
+}
+
 function isAuthorized(request: Request): boolean {
   if (!config.secret) {
     return true;
@@ -272,6 +371,7 @@ async function processSignal(
   dedupCounts.set(dedupeKey, stats);
 
   if (isDuplicate) {
+    metrics.signalsDuplicate++;
     return json({
       ok: true,
       ignored: true,
@@ -281,6 +381,7 @@ async function processSignal(
     });
   }
 
+  metrics.signalsProcessed++;
   // Process signal asynchronously after fast-ack response.
   // This prevents hook timeouts (10s) when starOfficeClient.apply() is slow.
   // The hook response is ignored by Claude Code for decision purposes anyway.
@@ -402,6 +503,11 @@ const server = Bun.serve({
 
     const response = await handleRequest(request, url);
     const duration = (performance.now() - start).toFixed(1);
+    // Track metrics
+    const pathKey = url.pathname;
+    metrics.httpRequestsTotal.set(pathKey, (metrics.httpRequestsTotal.get(pathKey) || 0) + 1);
+    const statusKey = `${pathKey}:${response.status}`;
+    metrics.httpResponsesTotal.set(statusKey, (metrics.httpResponsesTotal.get(statusKey) || 0) + 1);
     console.log(`[bridge] ${request.method} ${url.pathname} ${response.status} ${duration}ms`);
     return response;
   },
@@ -409,6 +515,7 @@ const server = Bun.serve({
     open(ws) {
       const data = ws.data as unknown as { authenticated: boolean; connectedAt: number; sessionId?: string };
       console.log(`[bridge] ws client connected authed=${data.authenticated} session=${data.sessionId || "none"}`);
+      metrics.wsConnections++;
       // Subscribe to the event broadcast channel
       ws.subscribe("bridge-events");
       // Send initial snapshot
@@ -417,6 +524,7 @@ const server = Bun.serve({
     },
     async message(ws, message) {
       const data = ws.data as unknown as { authenticated: boolean };
+      metrics.wsMessages++;
       const text = typeof message === "string" ? message : message.toString();
       let parsed: Record<string, unknown>;
       try {
@@ -511,6 +619,7 @@ async function handleRequest(request: Request, url: URL): Promise<Response> {
       const stream = new ReadableStream({
         start(controller) {
           sseClients.set(clientId, { controller, buffered: 0 });
+          metrics.sseClientConnected++;
           // Notify other clients about new connection
           broadcastSSE("client_connected", { clientId, totalClients: sseClients.size });
           // Send full snapshot on connect so new clients have current state
@@ -558,6 +667,7 @@ async function handleRequest(request: Request, url: URL): Promise<Response> {
           }
           request.signal.addEventListener("abort", () => {
             sseClients.delete(clientId);
+            metrics.sseClientDisconnected++;
             broadcastSSE("client_disconnected", { clientId, totalClients: sseClients.size });
             try {
               controller.close();
@@ -821,6 +931,8 @@ setInterval(()=>{if(ws&&ws.readyState===1)ws.send(JSON.stringify({type:"ping"}))
         const { heapStats: hs } = require("bun:jsc") as { heapStats: () => Record<string, unknown> };
         heapStats = hs();
       } catch {}
+      // Build Prometheus exposition format for /metrics endpoint reuse
+      const prometheusLines = buildPrometheusMetrics();
       return json({
         ok: true,
         uptime: process.uptime(),
@@ -829,12 +941,36 @@ setInterval(()=>{if(ws&&ws.readyState===1)ws.send(JSON.stringify({type:"ping"}))
         sseEventLogSize: sseEventLog.length,
         sessions: registry.list().length,
         heap: heapStats,
+        metrics: {
+          httpRequestsTotal: Object.fromEntries(metrics.httpRequestsTotal),
+          httpResponsesTotal: Object.fromEntries(metrics.httpResponsesTotal),
+          sseBroadcasts: metrics.sseBroadcasts,
+          sseClientConnected: metrics.sseClientConnected,
+          sseClientDisconnected: metrics.sseClientDisconnected,
+          sseClientEvicted: metrics.sseClientEvicted,
+          signalsProcessed: metrics.signalsProcessed,
+          signalsDuplicate: metrics.signalsDuplicate,
+          actionsExecuted: metrics.actionsExecuted,
+          tokenRefreshes: metrics.tokenRefreshes,
+          tokenRevocations: metrics.tokenRevocations,
+          wsConnections: metrics.wsConnections,
+          wsMessages: metrics.wsMessages,
+        },
         dedup: {
           totalSeen,
           totalPassed,
           totalSuppressed: totalSeen - totalPassed,
           keysTracked: dedupCounts.size,
           perKey: dedupEntries,
+        },
+      });
+    }
+
+    if (request.method === "GET" && url.pathname === "/metrics") {
+      return new Response(buildPrometheusMetrics(), {
+        headers: {
+          "content-type": "text/plain; version=0.0.4; charset=utf-8",
+          ...CORS_HEADERS,
         },
       });
     }
@@ -1109,6 +1245,7 @@ setInterval(()=>{if(ws&&ws.readyState===1)ws.send(JSON.stringify({type:"ping"}))
             console.warn("[bridge] failed to persist token to env file:", err);
           }
           broadcastSSE("web_token_refreshed", { tokenSet: true, tokenName: newTokenName, timestamp: new Date().toISOString() });
+          metrics.tokenRefreshes++;
         }
 
         const webUrl = config.zellijWebUrl || null;
@@ -1172,7 +1309,7 @@ setInterval(()=>{if(ws&&ws.readyState===1)ws.send(JSON.stringify({type:"ping"}))
           }
           (config as unknown as Record<string, unknown>).zellijWebToken = undefined;
           broadcastSSE("web_token_revoked", { all: true, timestamp: new Date().toISOString() });
-          return json({ ok: true, revokedAll: true, rawOutput: stdout.trim() || null });
+          metrics.tokenRevocations++;          return json({ ok: true, revokedAll: true, rawOutput: stdout.trim() || null });
         }
         // Revoke by token name (e.g., "token_5") — NOT the UUID
         const tokenName = body.name;
@@ -1196,6 +1333,7 @@ setInterval(()=>{if(ws&&ws.readyState===1)ws.send(JSON.stringify({type:"ping"}))
         }
 
         broadcastSSE("web_token_revoked", { name: tokenName, timestamp: new Date().toISOString() });
+        metrics.tokenRevocations++;
         return json({
           ok: true,
           revoked: tokenName,
@@ -1356,6 +1494,7 @@ setInterval(()=>{if(ws&&ws.readyState===1)ws.send(JSON.stringify({type:"ping"}))
         }
 
         broadcastSSE("action_executed", { action: body.action, args, session, exitCode });
+        metrics.actionsExecuted++;
 
         return json({
           ok: true,
@@ -1440,6 +1579,7 @@ const ROUTE_TABLE: { method: string; path: string; description: string; auth: bo
   { method: "GET", path: "/sessions/:id", description: "Session detail lookup", auth: false },
   { method: "GET", path: "/sessions/:id/events", description: "Per-session event history", auth: false },
   { method: "GET", path: "/stats", description: "Dedup stats, heap stats, runtime info", auth: false },
+  { method: "GET", path: "/metrics", description: "Prometheus exposition format metrics", auth: false },
   { method: "GET", path: "/version", description: "Bridge version, runtime, arch", auth: false },
   { method: "GET", path: "/ws", description: "WebSocket for bidirectional control (upgrade)", auth: false },
   { method: "GET", path: "/help", description: "This route table", auth: false },
