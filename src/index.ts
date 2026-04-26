@@ -16,7 +16,7 @@ const SSE_MAX_BUFFERED_MESSAGES = 32; // Drop clients with more than this many b
 let sseEventSeq = 0;
 let sseClientSeq = 0;
 const sseClients = new Map<number, { controller: ReadableStreamDefaultController; buffered: number; connectedAt: number }>();
-const BRIDGE_VERSION = "0.31.0";
+const BRIDGE_VERSION = "0.32.0";
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
@@ -222,7 +222,9 @@ async function appendEvent(entry: BridgeEventLogEntry): Promise<void> {
         // Compress the new .1 file in the background — reduces storage ~90%
         // onExit handler prevents zombie process when zstd finishes
         const zstSrc = `${config.eventsLogPath}.1`;
-        Bun.spawn({ cmd: ["zstd", "-3", "--rm", zstSrc], stderr: "ignore", onExit: () => {} });
+        Bun.spawn({ cmd: ["zstd", "-3", "--rm", zstSrc], stderr: "ignore", onExit(proc, exitCode) {
+          if (exitCode !== 0) console.warn(`[bridge] zstd compression failed for ${zstSrc}: exit=${exitCode}`);
+        } });
       }
     } catch {
       // File doesn't exist yet — no rotation needed
@@ -1644,9 +1646,14 @@ setInterval(()=>{fetch("/status").then(r=>r.json()).then(d=>{
             let content: string;
             if (filePath.endsWith(".zst")) {
               // Decompress zstd on the fly via Bun.spawn
-              const proc = Bun.spawn(["zstd", "-d", "--stdout", filePath], { stdout: "pipe", onExit: () => {} });
+              const proc = Bun.spawn(["zstd", "-d", "--stdout", filePath], { stdout: "pipe", stderr: "pipe", onExit: () => {} });
+              const exitCode = await proc.exited;
+              if (exitCode !== 0) {
+                const stderr = await new Response(proc.stderr).text();
+                console.warn(`[bridge] zstd decompression failed for ${filePath}: exit=${exitCode} stderr=${stderr}`);
+                continue;
+              }
               content = await new Response(proc.stdout).text();
-              await proc.exited;
             } else {
               content = await readFile(filePath, "utf8");
             }
