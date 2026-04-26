@@ -816,6 +816,7 @@ async function handleRequest(request: Request, url: URL): Promise<Response> {
     }
 
     if (request.method === "GET" && url.pathname === "/health") {
+      const mem = process.memoryUsage();
       return json({
         ok: true,
         host: config.host,
@@ -827,6 +828,8 @@ async function handleRequest(request: Request, url: URL): Promise<Response> {
         sessions: registry.list().length,
         sseClientIds: [...sseClients.keys()],
         uptime: process.uptime(),
+        memory: { rss: mem.rss, heapUsed: mem.heapUsed, heapTotal: mem.heapTotal },
+        isShuttingDown,
       });
     }
 
@@ -977,7 +980,7 @@ setInterval(()=>{fetch("/status").then(r=>r.json()).then(d=>{
     if (request.method === "GET" && url.pathname === "/help") {
       return json({
         ok: true,
-        version: "0.14.0",
+        version: "0.15.0",
         routes: ROUTE_TABLE,
       });
     }
@@ -985,7 +988,7 @@ setInterval(()=>{fetch("/status").then(r=>r.json()).then(d=>{
     if (request.method === "GET" && url.pathname === "/version") {
       return json({
         ok: true,
-        version: "0.14.0",
+        version: "0.15.0",
         runtime: `bun ${Bun.version}`,
         arch: process.arch,
         platform: process.platform,
@@ -1607,7 +1610,7 @@ setInterval(()=>{fetch("/status").then(r=>r.json()).then(d=>{
       } catch {}
       return json({
         ok: true,
-        version: "0.14.0",
+        version: "0.15.0",
         runtime: `bun ${Bun.version}`,
         arch: process.arch,
         platform: process.platform,
