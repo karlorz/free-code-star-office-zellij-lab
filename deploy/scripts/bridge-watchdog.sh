@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 # bridge-watchdog.sh — systemd watchdog wrapper for Star Office Bridge
 #
-# Bun cannot natively call sd_notify(). This wrapper:
-# 1. Sends --ready after the bridge process starts
-# 2. Loops checking /healthz and sending WATCHDOG=1 every 10s
-# 3. If /healthz fails, stops sending — systemd restarts after WatchdogSec
+# The bridge process itself sends READY=1 via systemd-notify after Bun.serve()
+# starts listening. This wrapper only handles the WATCHDOG=1 heartbeat loop.
+#
+# DO NOT send --ready from this wrapper — it would race ahead of the bridge
+# and report readiness before the HTTP server is actually accepting connections.
 #
 # Usage in star-office-bridge.service:
 #   Type=notify
@@ -17,10 +18,8 @@ set -euo pipefail
 BRIDGE_URL="${BRIDGE_WATCHDOG_URL:-http://127.0.0.1:4317/healthz}"
 CHECK_INTERVAL=10
 
-# Signal readiness once process is launched
-systemd-notify --ready
-
 # Background: start the bridge process
+# (bridge sends READY=1 itself after Bun.serve() is listening)
 "$@" &
 BRIDGE_PID=$!
 

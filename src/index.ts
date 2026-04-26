@@ -17,7 +17,7 @@ const SSE_MAX_BUFFERED_MESSAGES = 32; // Drop clients with more than this many b
 let sseEventSeq = 0;
 let sseClientSeq = 0;
 const sseClients = new Map<number, { controller: ReadableStreamDefaultController; buffered: number; connectedAt: number }>();
-const BRIDGE_VERSION = "0.58.0";
+const BRIDGE_VERSION = "0.59.0";
 
 // Shared environment for zellij CLI subprocess calls
 function zellijEnv(session?: string): Record<string, string | undefined> {
@@ -2876,8 +2876,8 @@ console.log(
 
 // Notify systemd of service state changes (Type=notify)
 // Uses systemd-notify CLI which writes to NOTIFY_SOCKET via AF_UNIX datagram.
-// The watchdog wrapper already sends READY=1, but STOPPING=1 from the bridge
-// itself lets systemd know the service is winding down before it exits.
+// The bridge is the authoritative source for READY=1 — the watchdog wrapper
+// does NOT send --ready (it only sends WATCHDOG=1).
 function sdNotify(state: string): void {
   if (!process.env.NOTIFY_SOCKET) return;
   try {
@@ -2887,5 +2887,10 @@ function sdNotify(state: string): void {
   }
 }
 
-// Notify systemd that the bridge is ready (supplements watchdog's --ready)
+// Extend startup timeout by 60s in case init takes longer than TimeoutStartSec
+// Must be sent BEFORE READY=1 — only effective during the startup phase
+sdNotify("EXTEND_TIMEOUT_USEC=60000000");
+
+// Notify systemd that the bridge is ready to accept connections
+// This is the authoritative READY=1 — the watchdog wrapper does NOT send --ready
 sdNotify("--ready");
