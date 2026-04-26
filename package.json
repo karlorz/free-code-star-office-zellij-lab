@@ -8,7 +8,9 @@
   "scripts": {
     "dev": "bun run src/index.ts",
     "typecheck": "tsc --noEmit",
-    "check:secrets": "bash scripts/check-no-secrets.sh"
+    "check:secrets": "bash scripts/check-no-secrets.sh",
+    "check:hooks": "bash scripts/check-hook-coverage.sh",
+    "check": "bun run typecheck && bun run check:hooks && bun run check:secrets"
   },
   "devDependencies": {
     "@types/bun": "^1.3.11",

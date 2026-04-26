@@ -28,7 +28,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-echo "[1/18] start isolated bridge"
+echo "[1/31] start isolated bridge"
 (
   cd "${REPO_ROOT}"
   BRIDGE_HOST="127.0.0.1" \
@@ -39,7 +39,7 @@ echo "[1/18] start isolated bridge"
 ) &
 BRIDGE_PID=$!
 
-echo "[2/18] wait for bridge health"
+echo "[2/31] wait for bridge health"
 for _ in $(seq 1 50); do
   if curl -fsS "${BRIDGE_URL}/health" >/dev/null 2>&1; then
     break
@@ -53,22 +53,22 @@ if ! curl -fsS "${BRIDGE_URL}/health" >/dev/null 2>&1; then
   exit 1
 fi
 
-echo "[3/18] manual main agent state"
+echo "[3/31] manual main agent state"
 curl -fsS -X POST "${BRIDGE_URL}/event/manual" \
   -H "content-type: application/json" \
   -d '{"sessionId":"smoke-main","scope":"main","state":"writing","detail":"smoke test main"}' >/dev/null
 
-echo "[4/18] manual subagent state"
+echo "[4/31] manual subagent state"
 curl -fsS -X POST "${BRIDGE_URL}/event/manual" \
   -H "content-type: application/json" \
   -d '{"sessionId":"smoke-main","scope":"subagent","agentName":"worker-1","state":"researching","detail":"smoke test subagent"}' >/dev/null
 
-echo "[5/18] hook-mapped main event"
+echo "[5/31] hook-mapped main event"
 curl -fsS -X POST "${BRIDGE_URL}/hook/claude" \
   -H "content-type: application/json" \
   -d '{"source":"smoke","event_name":"PreToolUse","payload":{"session_id":"smoke-hook","tool_name":"Read","task_subject":"hook test main"}}' >/dev/null
 
-echo "[6/18] hook-mapped subagent lifecycle"
+echo "[6/31] hook-mapped subagent lifecycle"
 curl -fsS -X POST "${BRIDGE_URL}/hook/claude" \
   -H "content-type: application/json" \
   -d '{"source":"smoke","event_name":"TaskCreated","payload":{"session_id":"smoke-hook","agent_id":"worker-42","agent_transcript_path":"/tmp/worker-42.jsonl","parent_session_id":"smoke-parent","task_subject":"hook test subagent"}}' >/dev/null
@@ -111,7 +111,7 @@ curl -fsS -X POST "${BRIDGE_URL}/hook/claude" \
   -H "content-type: application/json" \
   -d '{"source":"smoke","event_name":"TaskCompleted","payload":{"session_id":"smoke-hook","task_id":"task-55","task_description":"task owner completion"}}' >/dev/null
 
-echo "[7/18] hook-mapped transcript-only subagent lifecycle"
+echo "[7/31] hook-mapped transcript-only subagent lifecycle"
 curl -fsS -X POST "${BRIDGE_URL}/hook/claude" \
   -H "content-type: application/json" \
   -d '{"source":"smoke","event_name":"TaskCreated","payload":{"session_id":"smoke-hook","agent_transcript_path":"/tmp/worker-66.jsonl","task_id":"task-66","task_subject":"transcript-only owner mapping"}}' >/dev/null
@@ -119,7 +119,7 @@ curl -fsS -X POST "${BRIDGE_URL}/hook/claude" \
   -H "content-type: application/json" \
   -d '{"source":"smoke","event_name":"TaskCompleted","payload":{"session_id":"smoke-hook","task_id":"task-66","task_description":"transcript-only owner completion"}}' >/dev/null
 
-echo "[8/18] session reset on SessionStart"
+echo "[8/31] session reset on SessionStart"
 curl -fsS -X POST "${BRIDGE_URL}/hook/claude" \
   -H "content-type: application/json" \
   -d '{"source":"smoke","event_name":"TaskCreated","payload":{"session_id":"smoke-reset","agent_id":"worker-reset","task_id":"task-reset","task_subject":"reset owner mapping"}}' >/dev/null
@@ -130,7 +130,7 @@ curl -fsS -X POST "${BRIDGE_URL}/hook/claude" \
   -H "content-type: application/json" \
   -d '{"source":"smoke","event_name":"TaskCompleted","payload":{"session_id":"smoke-reset","task_id":"task-reset","task_description":"should not resurrect old owner"}}' >/dev/null
 
-echo "[9/18] session reset on SessionEnd"
+echo "[9/31] session reset on SessionEnd"
 curl -fsS -X POST "${BRIDGE_URL}/hook/claude" \
   -H "content-type: application/json" \
   -d '{"source":"smoke","event_name":"TaskCreated","payload":{"session_id":"smoke-end","agent_id":"worker-end","task_id":"task-end","task_subject":"end owner mapping"}}' >/dev/null
@@ -141,7 +141,7 @@ curl -fsS -X POST "${BRIDGE_URL}/hook/claude" \
   -H "content-type: application/json" \
   -d '{"source":"smoke","event_name":"TaskCompleted","payload":{"session_id":"smoke-end","task_id":"task-end","task_description":"should not resurrect ended owner"}}' >/dev/null
 
-echo "[10/18] same-session SessionEnd→SessionStart cycle reset"
+echo "[10/31] same-session SessionEnd→SessionStart cycle reset"
 curl -fsS -X POST "${BRIDGE_URL}/hook/claude" \
   -H "content-type: application/json" \
   -d '{"source":"smoke","event_name":"TaskCreated","payload":{"session_id":"smoke-cycle","agent_id":"worker-cycle","task_id":"task-cycle","task_subject":"cycle owner mapping"}}' >/dev/null
@@ -155,7 +155,7 @@ curl -fsS -X POST "${BRIDGE_URL}/hook/claude" \
   -H "content-type: application/json" \
   -d '{"source":"smoke","event_name":"TaskCompleted","payload":{"session_id":"smoke-cycle","task_id":"task-cycle","task_description":"should not resurrect after cycle reset"}}' >/dev/null
 
-echo "[11/18] agent-id identity stabilization across name drift"
+echo "[11/31] agent-id identity stabilization across name drift"
 curl -fsS -X POST "${BRIDGE_URL}/hook/claude" \
   -H "content-type: application/json" \
   -d '{"source":"smoke","event_name":"TaskCreated","payload":{"session_id":"smoke-alias","agent_id":"worker-alias","teammate_name":"friendly-alias","task_id":"task-alias","task_subject":"alias owner mapping"}}' >/dev/null
@@ -163,7 +163,7 @@ curl -fsS -X POST "${BRIDGE_URL}/hook/claude" \
   -H "content-type: application/json" \
   -d '{"source":"smoke","event_name":"SubagentStop","payload":{"session_id":"smoke-alias","agent_id":"worker-alias","task_description":"alias stop"}}' >/dev/null
 
-echo "[12/18] agent-id identity upgrade from generic to teammate name"
+echo "[12/31] agent-id identity upgrade from generic to teammate name"
 curl -fsS -X POST "${BRIDGE_URL}/hook/claude" \
   -H "content-type: application/json" \
   -d '{"source":"smoke","event_name":"TaskCreated","payload":{"session_id":"smoke-upgrade","agent_id":"worker-upgrade","task_id":"task-upgrade","task_subject":"upgrade owner mapping"}}' >/dev/null
@@ -174,7 +174,7 @@ curl -fsS -X POST "${BRIDGE_URL}/hook/claude" \
   -H "content-type: application/json" \
   -d '{"source":"smoke","event_name":"TaskCompleted","payload":{"session_id":"smoke-upgrade","task_id":"task-upgrade","task_description":"upgrade owner completion"}}' >/dev/null
 
-echo "[13/18] leave-path alias identity map cleanup on task-owner completion"
+echo "[13/31] leave-path alias identity map cleanup on task-owner completion"
 curl -fsS -X POST "${BRIDGE_URL}/hook/claude" \
   -H "content-type: application/json" \
   -d '{"source":"smoke","event_name":"TaskCreated","payload":{"session_id":"smoke-leave-alias","agent_id":"worker-leave-alias","task_id":"task-leave-alias","task_subject":"leave alias mapping"}}' >/dev/null
@@ -188,22 +188,32 @@ curl -fsS -X POST "${BRIDGE_URL}/hook/claude" \
   -H "content-type: application/json" \
   -d '{"source":"smoke","event_name":"PreToolUse","payload":{"session_id":"smoke-leave-alias","agent_id":"worker-leave-alias","tool_name":"Read","task_subject":"leave alias generic reentry"}}' >/dev/null
 
-echo "[14/18] Stop denial fallback"
+echo "[14/31] Stop denial fallback"
 curl -fsS -X POST "${BRIDGE_URL}/hook/claude" \
   -H "content-type: application/json" \
   -d '{"source":"smoke","event_name":"Stop","payload":{"session_id":"smoke-denial","last_assistant_message":"Bash permission was denied in don'\''t-ask mode, so I can’t complete that command as requested."}}' >/dev/null
 
-echo "[15/20] task metadata projection"
+curl -fsS -X POST "${BRIDGE_URL}/hook/claude" \
+  -H "content-type: application/json" \
+  -d '{"source":"smoke","event_name":"PostToolUseFailure","payload":{"session_id":"smoke-post-tool-failure","tool_name":"Bash","error":"command failed for smoke coverage"}}' >/dev/null
+curl -fsS -X POST "${BRIDGE_URL}/hook/claude" \
+  -H "content-type: application/json" \
+  -d '{"source":"smoke","event_name":"PermissionDenied","payload":{"session_id":"smoke-permission-denied-direct","request_id":"perm-denied-direct","reason":"classifier denied smoke probe"}}' >/dev/null
+curl -fsS -X POST "${BRIDGE_URL}/hook/claude" \
+  -H "content-type: application/json" \
+  -d '{"source":"smoke","event_name":"StopFailure","payload":{"session_id":"smoke-stop-failure","error":"stop failed for smoke coverage"}}' >/dev/null
+
+echo "[15/31] task metadata projection"
 curl -fsS -X POST "${BRIDGE_URL}/hook/claude" \
   -H "content-type: application/json" \
   -d '{"source":"smoke","event_name":"TaskCompleted","payload":{"session_id":"smoke-task-meta","task_id":"task-meta-1","task_description":"task metadata completion","status":"completed","summary":"task summary projection","output_file":"/tmp/task-meta/output.md","worktree":{"path":"/tmp/worktrees/task-meta","branch":"task-meta-branch"}}}' >/dev/null
 
-echo "[16/23] teammate control-plane projection"
+echo "[16/31] teammate control-plane projection"
 curl -fsS -X POST "${BRIDGE_URL}/hook/claude" \
   -H "content-type: application/json" \
   -d '{"source":"smoke","event_name":"UserPromptSubmit","payload":{"session_id":"smoke-control-plane-request","prompt":"<teammate-message teammate_id=\"worker-mailbox\" summary=\"plan request\">\n{\"type\":\"plan_approval_request\",\"from\":\"worker-mailbox\",\"timestamp\":\"2026-04-06T00:00:00.000Z\",\"planFilePath\":\"/tmp/plan.md\",\"planContent\":\"# Plan\",\"requestId\":\"plan-123\"}\n</teammate-message>"}}' >/dev/null
 
-echo "[17/23] teammate control-plane responses"
+echo "[17/31] teammate control-plane responses"
 curl -fsS -X POST "${BRIDGE_URL}/hook/claude" \
   -H "content-type: application/json" \
   -d '{"source":"smoke","event_name":"UserPromptSubmit","payload":{"session_id":"smoke-control-plane-approved","prompt":"<teammate-message teammate_id=\"worker-mailbox\" summary=\"plan approved\">\n{\"type\":\"plan_approval_response\",\"requestId\":\"plan-124\",\"approved\":true,\"timestamp\":\"2026-04-06T00:01:00.000Z\"}\n</teammate-message>"}}' >/dev/null
@@ -211,7 +221,7 @@ curl -fsS -X POST "${BRIDGE_URL}/hook/claude" \
   -H "content-type: application/json" \
   -d '{"source":"smoke","event_name":"UserPromptSubmit","payload":{"session_id":"smoke-control-plane-rejected","prompt":"<teammate-message teammate_id=\"worker-mailbox\" summary=\"plan rejected\">\n{\"type\":\"plan_approval_response\",\"requestId\":\"plan-125\",\"approved\":false,\"feedback\":\"needs revision\",\"timestamp\":\"2026-04-06T00:02:00.000Z\"}\n</teammate-message>"}}' >/dev/null
 
-echo "[18/23] teammate shutdown projection"
+echo "[18/31] teammate shutdown projection"
 curl -fsS -X POST "${BRIDGE_URL}/hook/claude" \
   -H "content-type: application/json" \
   -d '{"source":"smoke","event_name":"UserPromptSubmit","payload":{"session_id":"smoke-shutdown-request","prompt":"<teammate-message teammate_id=\"worker-mailbox\" summary=\"shutdown request\">\n{\"type\":\"shutdown_request\",\"requestId\":\"shutdown-1\",\"from\":\"worker-mailbox\",\"reason\":\"done\",\"timestamp\":\"2026-04-06T00:03:00.000Z\"}\n</teammate-message>"}}' >/dev/null
@@ -222,7 +232,7 @@ curl -fsS -X POST "${BRIDGE_URL}/hook/claude" \
   -H "content-type: application/json" \
   -d '{"source":"smoke","event_name":"UserPromptSubmit","payload":{"session_id":"smoke-shutdown-rejected","prompt":"<teammate-message teammate_id=\"worker-mailbox\" summary=\"shutdown rejected\">\n{\"type\":\"shutdown_rejected\",\"requestId\":\"shutdown-3\",\"from\":\"lead-agent\",\"reason\":\"keep working\",\"timestamp\":\"2026-04-06T00:05:00.000Z\"}\n</teammate-message>"}}' >/dev/null
 
-echo "[19/27] teammate permission projection"
+echo "[19/31] teammate permission projection"
 curl -fsS -X POST "${BRIDGE_URL}/hook/claude" \
   -H "content-type: application/json" \
   -d '{"source":"smoke","event_name":"UserPromptSubmit","payload":{"session_id":"smoke-permission-request","prompt":"<teammate-message teammate_id=\"worker-mailbox\" summary=\"permission request\">\n{\"type\":\"permission_request\",\"request_id\":\"perm-1\",\"agent_id\":\"worker-mailbox\",\"tool_name\":\"Bash\",\"tool_use_id\":\"toolu_123\",\"description\":\"Run ls in repo root\",\"input\":{\"command\":\"ls\"},\"permission_suggestions\":[{\"tool_name\":\"Bash\"}]}\n</teammate-message>"}}' >/dev/null
@@ -233,7 +243,7 @@ curl -fsS -X POST "${BRIDGE_URL}/hook/claude" \
   -H "content-type: application/json" \
   -d '{"source":"smoke","event_name":"UserPromptSubmit","payload":{"session_id":"smoke-permission-denied","prompt":"<teammate-message teammate_id=\"team-lead\" summary=\"permission denied\">\n{\"type\":\"permission_response\",\"request_id\":\"perm-2\",\"subtype\":\"error\",\"error\":\"Permission denied by lead\"}\n</teammate-message>"}}' >/dev/null
 
-echo "[20/27] teammate sandbox permission projection"
+echo "[20/31] teammate sandbox permission projection"
 curl -fsS -X POST "${BRIDGE_URL}/hook/claude" \
   -H "content-type: application/json" \
   -d '{"source":"smoke","event_name":"UserPromptSubmit","payload":{"session_id":"smoke-sandbox-request","prompt":"<teammate-message teammate_id=\"worker-mailbox\" summary=\"sandbox request\">\n{\"type\":\"sandbox_permission_request\",\"requestId\":\"sandbox-1\",\"workerId\":\"worker-mailbox\",\"workerName\":\"worker-mailbox\",\"hostPattern\":{\"host\":\"api.anthropic.com\"},\"createdAt\":1712361600000}\n</teammate-message>"}}' >/dev/null
@@ -245,13 +255,13 @@ curl -fsS -X POST "${BRIDGE_URL}/hook/claude" \
   -d '{"source":"smoke","event_name":"UserPromptSubmit","payload":{"session_id":"smoke-sandbox-denied","prompt":"<teammate-message teammate_id=\"team-lead\" summary=\"sandbox denied\">\n{\"type\":\"sandbox_permission_response\",\"requestId\":\"sandbox-2\",\"host\":\"example.com\",\"allow\":false,\"timestamp\":\"2026-04-06T00:07:00.000Z\"}\n</teammate-message>"}}' >/dev/null
 
 
-echo "[21/29] direct PermissionRequest hook projection"
+echo "[21/31] direct PermissionRequest hook projection"
 curl -fsS -X POST "${BRIDGE_URL}/hook/claude" \
   -H "content-type: application/json" \
   -d '{"source":"smoke","event_name":"PermissionRequest","payload":{"session_id":"smoke-direct-permission-request","agent_id":"worker-direct","tool_name":"Bash","tool_use_id":"toolu_direct","description":"Run pwd in repo root"}}' >/dev/null
 
 
-echo "[22/29] notification hook projection"
+echo "[22/31] notification hook projection"
 curl -fsS -X POST "${BRIDGE_URL}/hook/claude" \
   -H "content-type: application/json" \
   -d '{"source":"smoke","event_name":"Notification","payload":{"session_id":"smoke-notification-permission","notification_type":"worker_permission_prompt","title":"Worker permission needed","message":"worker-mailbox needs permission for Bash"}}' >/dev/null
@@ -260,7 +270,7 @@ curl -fsS -X POST "${BRIDGE_URL}/hook/claude" \
   -d '{"source":"smoke","event_name":"Notification","payload":{"session_id":"smoke-notification-network","notification_type":"worker_permission_prompt","title":"Worker network access needed","message":"worker-mailbox needs network access to api.anthropic.com"}}' >/dev/null
 
 
-echo "[22/29] hook invalid-json rejection"
+echo "[23/31] hook invalid-json rejection"
 invalid_json_status="$(curl -sS -o /dev/null -w '%{http_code}' -X POST "${BRIDGE_URL}/hook/claude" \
   -H "content-type: application/json" \
   --data-binary 'not-json')"
@@ -270,7 +280,7 @@ if [[ "${invalid_json_status}" != "400" ]]; then
   exit 1
 fi
 
-echo "[20/23] hook missing-event rejection"
+echo "[24/31] hook missing-event rejection"
 missing_event_status="$(curl -sS -o /dev/null -w '%{http_code}' -X POST "${BRIDGE_URL}/hook/claude" \
   -H "content-type: application/json" \
   --data-binary '{"source":"smoke","payload":{"session_id":"smoke-hook"}}')"
@@ -280,7 +290,7 @@ if [[ "${missing_event_status}" != "400" ]]; then
   exit 1
 fi
 
-echo "[21/23] session projection checks"
+echo "[25/31] session projection checks"
 sessions_json="$(curl -fsS "${BRIDGE_URL}/sessions")"
 SESSIONS_JSON="${sessions_json}" python3 - <<'PY'
 import json
@@ -629,6 +639,35 @@ if notification_network_context.get("notificationHost") != "api.anthropic.com":
 if notification_network_context.get("notificationToolName") is not None:
     raise SystemExit("expected notification network notificationToolName to be absent")
 
+post_tool_failure_session = by_id.get("smoke-post-tool-failure")
+if not post_tool_failure_session:
+    raise SystemExit("missing smoke-post-tool-failure session")
+post_tool_failure_main = post_tool_failure_session.get("main") or {}
+if post_tool_failure_main.get("state") != "error":
+    raise SystemExit(f"expected post tool failure main.state=error, got {post_tool_failure_main.get('state')!r}")
+if post_tool_failure_main.get("detail") != "command failed for smoke coverage":
+    raise SystemExit("expected post tool failure detail to preserve error payload")
+
+permission_denied_direct_session = by_id.get("smoke-permission-denied-direct")
+if not permission_denied_direct_session:
+    raise SystemExit("missing smoke-permission-denied-direct session")
+permission_denied_direct_main = permission_denied_direct_session.get("main") or {}
+if permission_denied_direct_main.get("state") != "error":
+    raise SystemExit(f"expected direct permission denied main.state=error, got {permission_denied_direct_main.get('state')!r}")
+if permission_denied_direct_main.get("detail") != "[Permission Denied] classifier denied smoke probe":
+    raise SystemExit("expected direct permission denied detail to use direct control-plane summary")
+if permission_denied_direct_main.get("context", {}).get("controlPlaneType") != "PermissionDenied":
+    raise SystemExit("expected direct permission denied controlPlaneType='PermissionDenied'")
+
+stop_failure_session = by_id.get("smoke-stop-failure")
+if not stop_failure_session:
+    raise SystemExit("missing smoke-stop-failure session")
+stop_failure_main = stop_failure_session.get("main") or {}
+if stop_failure_main.get("state") != "error":
+    raise SystemExit(f"expected stop failure main.state=error, got {stop_failure_main.get('state')!r}")
+if stop_failure_main.get("detail") != "stop failed for smoke coverage":
+    raise SystemExit("expected stop failure detail to preserve error payload")
+
 direct_permission_session = by_id.get("smoke-direct-permission-request")
 if not direct_permission_session:
     raise SystemExit("missing smoke-direct-permission-request session")
@@ -679,6 +718,15 @@ for entry in entries:
     if missing:
         raise SystemExit(f"event log entry missing keys: {missing}")
 
+for event_name in ["PostToolUseFailure", "PermissionDenied", "StopFailure"]:
+    mapped_error = next((entry for entry in entries if ((entry.get("rawEvent") or {}).get("event_name") == event_name)), None)
+    if not mapped_error:
+        raise SystemExit(f"expected mapped {event_name} event log entry")
+    if mapped_error.get("ignored") is not False:
+        raise SystemExit(f"expected {event_name} event log entry to be mapped")
+    if mapped_error.get("signal", {}).get("state") != "error":
+        raise SystemExit(f"expected {event_name} signal.state='error'")
+
 mapped = next((entry for entry in entries if ((entry.get("rawEvent") or {}).get("event_name") == "PermissionRequest")), None)
 if not mapped:
     raise SystemExit("expected mapped PermissionRequest event log entry")
@@ -721,5 +769,5 @@ if ignored_missing_name.get("signal") is not None or ignored_missing_name.get("o
     raise SystemExit("expected ignored entries to have null signal/originalSignal")
 PY
 
-echo "[30/30] smoke pass"
+echo "[31/31] smoke pass"
 echo "smoke test passed"

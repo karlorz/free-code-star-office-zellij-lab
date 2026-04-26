@@ -35,19 +35,27 @@ The repo is intentionally narrow:
 bun install
 ```
 
-3. Start the bridge:
+3. Run local validation:
+
+```bash
+bun run check
+```
+
+This runs TypeScript typecheck, hook coverage drift checks, and the secret scan. Use `bun run check:hooks` by itself when only validating that free-code's canonical hook event list still matches the plugin subscriptions and bridge mapper.
+
+4. Start the bridge:
 
 ```bash
 bun run dev
 ```
 
-4. In another shell, verify the bridge and manual state flow:
+5. In another shell, verify the bridge and manual state flow:
 
 ```bash
 ./scripts/smoke-test.sh
 ```
 
-5. Capture real hook payloads from the local `free-code` runtime:
+6. Capture real hook payloads from the local `free-code` runtime:
 
 ### Baseline lifecycle capture
 
@@ -86,13 +94,13 @@ This helper starts the same bridge and plugin wiring, but launches an interactiv
 Use it from a pane-capable interactive terminal, create a team from the leader session, spawn a worker, and then have the worker attempt the first concrete permission probe `touch worker-permission-probe.txt` so the leader-side `Notification` hook can surface.
 The helper now also prints a recommended leader prompt before launching the runtime, and you can override that text with `LEADER_PROMPT=...` when you want to try a narrower or more forceful approval-triggering worker action.
 
-6. Attach a Zellij session rooted in the local `free-code` workspace:
+7. Attach a Zellij session rooted in the local `free-code` workspace:
 
 ```bash
 ./scripts/launch-zellij-lab.sh
 ```
 
-7. Wire the draft plugin into a local Claude plugin install and point it at the bridge:
+8. Wire the draft plugin into a local Claude plugin install and point it at the bridge:
    The draft plugin lives in [`plugins/claude-star-office-bridge`](./plugins/claude-star-office-bridge).
 
 ## Current State
@@ -101,6 +109,7 @@ What works in this repo right now:
 
 - A Bun HTTP bridge that accepts Claude-style hook envelopes.
 - A state mapper from hook events to Star Office UI states.
+- A hook coverage guard that compares free-code's canonical `HOOK_EVENTS` with plugin subscriptions and bridge mappings.
 - A Star Office UI client that uses real upstream endpoint names:
   - `/set_state`
   - `/join-agent`
