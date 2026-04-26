@@ -23,6 +23,7 @@ POST_CAPTURE_CHECK="${POST_CAPTURE_CHECK:-true}"
 POST_CAPTURE_REPORT="${POST_CAPTURE_REPORT:-${REPO_ROOT}/tmp/live-capture-report.md}"
 CAPTURE_SSE_PROOF="${CAPTURE_SSE_PROOF:-false}"
 SSE_PROOF_PATH="${SSE_PROOF_PATH:-${REPO_ROOT}/tmp/live-sse-proof.txt}"
+REMOTE_BRIDGE="${REMOTE_BRIDGE:-false}"
 
 if [[ -z "${LEADER_PROMPT:-}" ]]; then
   LEADER_PROMPT="Use the team tool now. Create a team named notif-capture. Then spawn one worker named worker-1 in that team with cwd set to ${REPO_ROOT}. Have the worker run a Bash tool call for: touch worker-permission-probe.txt. After dispatching the worker, do nothing else and wait so leader-side notifications can appear."
@@ -60,6 +61,7 @@ Environment overrides:
   POST_CAPTURE_REPORT  Default: <lab repo>/tmp/live-capture-report.md
   CAPTURE_SSE_PROOF    Default: false; save a /events SSE transcript during runtime
   SSE_PROOF_PATH       Default: <lab repo>/tmp/live-sse-proof.txt
+  REMOTE_BRIDGE        Default: false; skip local bridge startup, connect to existing bridge
 EOF
 }
 
@@ -311,31 +313,41 @@ stop_sse_proof_capture() {
 
 mkdir -p "${REPO_ROOT}/tmp"
 rm -f "${EVENTS_LOG}"
-: > "${BRIDGE_LOG}"
 
-pick_bridge_port
-
-(
-  cd "${REPO_ROOT}"
-  BRIDGE_HOST="${BRIDGE_HOST}" \
-  BRIDGE_PORT="${BRIDGE_PORT}" \
-  BRIDGE_DRY_RUN="${BRIDGE_DRY_RUN}" \
-  bun run src/index.ts >>"${BRIDGE_LOG}" 2>&1
-) &
-BRIDGE_PID=$!
-
-for _ in $(seq 1 50); do
-  if bridge_ready; then
-    break
+if [[ "${REMOTE_BRIDGE}" == "true" ]]; then
+  # Skip local bridge startup — use an already-running bridge (e.g., systemd on sg01)
+  if ! curl -fsS "${BRIDGE_URL}/health" >/dev/null 2>&1; then
+    echo "remote bridge not reachable at ${BRIDGE_URL}" >&2
+    exit 1
   fi
-  if ! bridge_pid_alive; then
+  echo "[interactive-capture] using remote bridge at ${BRIDGE_URL}"
+else
+  : > "${BRIDGE_LOG}"
+
+  pick_bridge_port
+
+  (
+    cd "${REPO_ROOT}"
+    BRIDGE_HOST="${BRIDGE_HOST}" \
+    BRIDGE_PORT="${BRIDGE_PORT}" \
+    BRIDGE_DRY_RUN="${BRIDGE_DRY_RUN}" \
+    bun run src/index.ts >>"${BRIDGE_LOG}" 2>&1
+  ) &
+  BRIDGE_PID=$!
+
+  for _ in $(seq 1 50); do
+    if bridge_ready; then
+      break
+    fi
+    if ! bridge_pid_alive; then
+      fail_bridge_start
+    fi
+    sleep 0.1
+  done
+
+  if ! bridge_pid_alive || ! bridge_ready; then
     fail_bridge_start
   fi
-  sleep 0.1
-done
-
-if ! bridge_pid_alive || ! bridge_ready; then
-  fail_bridge_start
 fi
 
 plugin_args=(--plugin-dir "${PLUGIN_DIR}")
