@@ -1317,8 +1317,11 @@ setInterval(()=>{fetch("/status").then(r=>r.json()).then(d=>{
         dedupCounts.set(dedupeKey, stats);
 
         if (isDuplicate) {
+          metrics.signalsDuplicate++;
+          metrics.signalsSuppressed++;
           results.push({ index: i, ok: true, ignored: true, reason: "duplicate signal" });
         } else {
+          metrics.signalsProcessed++;
           broadcastSSE("signal", resolvedSignal);
           results.push({ index: i, ok: true });
         }
