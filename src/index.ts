@@ -44,6 +44,8 @@ const metrics = {
   actionsExecuted: 0,
   tokenRefreshes: 0,
   tokenRevocations: 0,
+  starOfficeApply: 0,
+  starOfficeApplyFailures: 0,
   rateLimitRejections: 0,
   wsConnections: 0,
   wsMessages: 0,
@@ -327,6 +329,13 @@ function buildPrometheusMetrics(): string {
   lines.push(`# HELP bridge_rate_limit_rejections_total Total requests rejected by rate limiter`);
   lines.push(`# TYPE bridge_rate_limit_rejections_total counter`);
   lines.push(`bridge_rate_limit_rejections_total ${metrics.rateLimitRejections}`);
+  // Star Office apply metrics
+  lines.push(`# HELP bridge_star_office_apply_total Total star-office apply successes`);
+  lines.push(`# TYPE bridge_star_office_apply_total counter`);
+  lines.push(`bridge_star_office_apply_total ${metrics.starOfficeApply}`);
+  lines.push(`# HELP bridge_star_office_apply_failures_total Total star-office apply failures`);
+  lines.push(`# TYPE bridge_star_office_apply_failures_total counter`);
+  lines.push(`bridge_star_office_apply_failures_total ${metrics.starOfficeApplyFailures}`);
   // WebSocket metrics
   lines.push(`# HELP bridge_ws_connections_total Total WebSocket connections established`);
   lines.push(`# TYPE bridge_ws_connections_total counter`);
@@ -475,8 +484,12 @@ async function processSignal(
       const result = await starOfficeClient.apply(resolvedSignal);
       // Update the event log entry with the star office result
       // (the event is already persisted, the result is a side effect)
-      if (result) console.log(`[bridge] star-office apply ok for ${resolvedSignal.eventName}`);
+      if (result) {
+        metrics.starOfficeApply++;
+        console.log(`[bridge] star-office apply ok for ${resolvedSignal.eventName}`);
+      }
     } catch (error) {
+      metrics.starOfficeApplyFailures++;
       console.error(`[bridge] star-office apply failed for ${resolvedSignal.eventName}: ${formatError(error).message}`);
     }
   });
@@ -980,7 +993,7 @@ setInterval(()=>{fetch("/status").then(r=>r.json()).then(d=>{
     if (request.method === "GET" && url.pathname === "/help") {
       return json({
         ok: true,
-        version: "0.15.0",
+        version: "0.16.0",
         routes: ROUTE_TABLE,
       });
     }
@@ -988,7 +1001,7 @@ setInterval(()=>{fetch("/status").then(r=>r.json()).then(d=>{
     if (request.method === "GET" && url.pathname === "/version") {
       return json({
         ok: true,
-        version: "0.15.0",
+        version: "0.16.0",
         runtime: `bun ${Bun.version}`,
         arch: process.arch,
         platform: process.platform,
@@ -1610,7 +1623,7 @@ setInterval(()=>{fetch("/status").then(r=>r.json()).then(d=>{
       } catch {}
       return json({
         ok: true,
-        version: "0.15.0",
+        version: "0.16.0",
         runtime: `bun ${Bun.version}`,
         arch: process.arch,
         platform: process.platform,

@@ -152,6 +152,19 @@ groups:
           description: >-
             5xx errors are {{ $value | humanizePercentage }} of all requests.
 
+      # WARNING: Star Office apply failures
+      - alert: BridgeStarOfficeApplyFailures
+        expr: rate(bridge_star_office_apply_failures_total[5m]) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+          service: star-office-bridge
+        annotations:
+          summary: "Star Office apply failures on {{ $labels.instance }}"
+          description: >-
+            {{ $value | printf "%.1f" }} star-office apply failures/sec.
+            Downstream integration may be degraded.
+
       # INFO: SSE client count high
       - alert: BridgeSSEClientCountHigh
         expr: bridge_sse_clients_current > 80
@@ -209,6 +222,11 @@ groups:
 
       - record: bridge:http_request_rate:rate5m
         expr: sum(rate(bridge_http_requests_total[5m])) without(path)
+
+      - record: bridge:star_office_apply_failure_ratio:rate5m
+        expr: |
+          rate(bridge_star_office_apply_failures_total[5m])
+          / (rate(bridge_star_office_apply_total[5m]) + rate(bridge_star_office_apply_failures_total[5m]))
 
       - record: caddy:error_5xx_ratio:rate3m
         expr: |
