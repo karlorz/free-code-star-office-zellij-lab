@@ -17,7 +17,7 @@ const SSE_MAX_BUFFERED_MESSAGES = 32; // Drop clients with more than this many b
 let sseEventSeq = 0;
 let sseClientSeq = 0;
 const sseClients = new Map<number, { controller: ReadableStreamDefaultController; buffered: number; connectedAt: number }>();
-const BRIDGE_VERSION = "0.42.0";
+const BRIDGE_VERSION = "0.43.0";
 
 // Shared environment for zellij CLI subprocess calls
 function zellijEnv(session?: string): Record<string, string | undefined> {
@@ -835,7 +835,7 @@ process.on("unhandledRejection", (reason) => {
 const server = Bun.serve({
   hostname: config.host,
   port: config.port,
-  reusePort: true, // SO_REUSEPORT on Linux: enables kernel-level load balancing across multiple processes
+  reusePort: false, // SO_REUSEPORT only useful for multi-process; single service gains nothing
   idleTimeout: 30, // Default for HTTP request timeout; SSE uses server.timeout(req,0) per-request
   fetch: async (request: Request, srv: any): Promise<Response | undefined> => {
     const url = new URL(request.url);
