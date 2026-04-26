@@ -11,6 +11,14 @@ set -euo pipefail
 _running=true
 trap 'echo "[zellij-monitor] received shutdown signal" >&2; _running=false' TERM INT
 
+# systemd watchdog support: notify READY and send periodic keep-alive
+_notify_socket="${NOTIFY_SOCKET:-}"
+sd_notify() {
+  if [[ -n "$_notify_socket" ]]; then
+    printf "%s" "$1" | socat - UNIX-SENDTO:"$_notify_socket" 2>/dev/null || true
+  fi
+}
+
 BRIDGE_URL="${BRIDGE_URL:-http://127.0.0.1:4317}"
 HOOK_PATH="${HOOK_PATH:-/hook/zellij}"
 POLL_INTERVAL="${POLL_INTERVAL:-2}"
@@ -51,6 +59,9 @@ post_event() {
 }
 
 echo "[zellij-monitor] watching session: ${SESSION_NAME} interval: ${POLL_INTERVAL}s bridge: ${BRIDGE_URL}"
+
+# Notify systemd that service is ready
+sd_notify "READY=1"
 
 # Single-pass pane metadata extraction — outputs shell key=value pairs
 # Key=value format: simple scalars are bare, JSON arrays/objects are JSON-encoded
@@ -216,6 +227,9 @@ for p in json.load(sys.stdin):
   if [[ "$_running" != "true" ]]; then
     exit 0
   fi
+
+  # systemd watchdog keep-alive
+  sd_notify "WATCHDOG=1"
 
   sleep "$POLL_INTERVAL"
 done

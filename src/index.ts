@@ -299,6 +299,32 @@ const server = Bun.serve({
       });
     }
 
+    if (request.method === "GET" && url.pathname.match(/^\/sessions\/[^/]+\/events$/)) {
+      const sessionId = decodeURIComponent(url.pathname.split("/")[2]);
+      const limit = Math.min(Number(url.searchParams.get("limit") || 50), 200);
+      try {
+        const { readFile } = await import("node:fs/promises");
+        const content = await readFile(config.eventsLogPath, "utf8");
+        const lines = content.trim().split("\n").filter(Boolean);
+        const entries = lines
+          .map((line) => { try { return JSON.parse(line); } catch { return null; } })
+          .filter(Boolean)
+          .filter((e: Record<string, unknown>) => {
+            const sig = e.signal as Record<string, unknown> | null;
+            return sig?.sessionId === sessionId;
+          })
+          .slice(-limit);
+        return json({
+          ok: true,
+          sessionId,
+          count: entries.length,
+          entries,
+        });
+      } catch {
+        return json({ ok: true, sessionId, count: 0, entries: [] });
+      }
+    }
+
     if (request.method === "GET" && url.pathname === "/stats") {
       const dedupEntries = Object.fromEntries(
         [...dedupCounts.entries()].map(([key, val]) => [key, val])

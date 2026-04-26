@@ -21,6 +21,10 @@ Environment=XDG_RUNTIME_DIR=/run/user/0
 Restart=on-failure
 RestartSec=5
 
+# Watchdog: auto-restart if no keep-alive received within 30s
+WatchdogSec=30
+NotifyAccess=main
+
 # Logging: journal integration
 StandardOutput=journal
 StandardError=journal
