@@ -197,21 +197,30 @@ async function appendEvent(entry: BridgeEventLogEntry): Promise<void> {
         // Flush and close sink before rotation (file must be closed for rename)
         await closeLogSink();
         const { rename: renameFile } = await import("node:fs/promises");
-        // Remove oldest rotated file
+        // Remove oldest rotated file (also remove compressed .zst version)
         for (let i = EVENTS_LOG_KEEP_ROTATED; i >= 1; i--) {
           const rotatedPath = `${config.eventsLogPath}.${i}`;
+          const rotatedZstPath = `${rotatedPath}.zst`;
           const nextRotatedPath = `${config.eventsLogPath}.${i + 1}`;
+          const nextRotatedZstPath = `${nextRotatedPath}.zst`;
           try {
-            await stat(rotatedPath);
+            // Prefer compressed version if it exists
+            const hasZst = await stat(rotatedZstPath).then(() => true).catch(() => false);
+            const hasPlain = await stat(rotatedPath).then(() => true).catch(() => false);
             if (i === EVENTS_LOG_KEEP_ROTATED) {
-              await unlink(rotatedPath); // Delete oldest
+              if (hasZst) await unlink(rotatedZstPath);
+              if (hasPlain) await unlink(rotatedPath);
             } else {
-              await renameFile(rotatedPath, nextRotatedPath); // Shift up
+              if (hasZst) await renameFile(rotatedZstPath, nextRotatedZstPath);
+              if (hasPlain) await renameFile(rotatedPath, nextRotatedPath);
             }
           } catch { /* file doesn't exist */ }
         }
         // Move current log to .1
         await renameFile(config.eventsLogPath, `${config.eventsLogPath}.1`);
+        // Compress the new .1 file in the background — reduces storage ~90%
+        const zstSrc = `${config.eventsLogPath}.1`;
+        Bun.spawn({ cmd: ["zstd", "-3", "--rm", zstSrc], stderr: "ignore" });
       }
     } catch {
       // File doesn't exist yet — no rotation needed
@@ -1234,7 +1243,7 @@ setInterval(()=>{fetch("/status").then(r=>r.json()).then(d=>{
     if (request.method === "GET" && url.pathname === "/help") {
       return json({
         ok: true,
-        version: "0.28.0",
+        version: "0.29.0",
         routes: ROUTE_TABLE,
       });
     }
@@ -1242,7 +1251,7 @@ setInterval(()=>{fetch("/status").then(r=>r.json()).then(d=>{
     if (request.method === "GET" && url.pathname === "/version") {
       return json({
         ok: true,
-        version: "0.28.0",
+        version: "0.29.0",
         runtime: `bun ${Bun.version}`,
         arch: process.arch,
         platform: process.platform,
@@ -1611,16 +1620,25 @@ setInterval(()=>{fetch("/status").then(r=>r.json()).then(d=>{
         const { readFile } = await import("node:fs/promises");
         const filesToRead = [config.eventsLogPath];
         for (let i = 1; i <= EVENTS_LOG_KEEP_ROTATED; i++) {
+          const plainPath = `${config.eventsLogPath}.${i}`;
+          const zstPath = `${plainPath}.zst`;
           try {
             const { stat: statFile } = await import("node:fs/promises");
-            await statFile(`${config.eventsLogPath}.${i}`);
-            filesToRead.push(`${config.eventsLogPath}.${i}`);
+            try { await statFile(zstPath); filesToRead.push(zstPath); }
+            catch { await statFile(plainPath); filesToRead.push(plainPath); }
           } catch { /* rotated file doesn't exist */ }
         }
         let allEntries: Record<string, unknown>[] = [];
         for (const filePath of filesToRead) {
           try {
-            const content = await readFile(filePath, "utf8");
+            let content: string;
+            if (filePath.endsWith(".zst")) {
+              // Decompress zstd on the fly via Bun.spawn
+              const proc = Bun.spawn(["zstd", "-d", "--stdout", filePath], { stdout: "pipe" });
+              content = await new Response(proc.stdout).text();
+            } else {
+              content = await readFile(filePath, "utf8");
+            }
             const lines = content.trim().split("\n").filter(Boolean);
             for (const line of lines) {
               try { allEntries.push(JSON.parse(line)); } catch { /* skip malformed */ }
@@ -2175,7 +2193,7 @@ setInterval(()=>{fetch("/status").then(r=>r.json()).then(d=>{
       } catch {}
       return json({
         ok: true,
-        version: "0.28.0",
+        version: "0.29.0",
         runtime: `bun ${Bun.version}`,
         arch: process.arch,
         platform: process.platform,
