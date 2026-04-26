@@ -509,6 +509,16 @@ const sweeperInterval = setInterval(() => {
   }
 }, 60_000);
 
+// Periodic snapshot push: broadcasts current session state to all SSE clients
+// every 60s for proactive drift correction. Long-lived connections may miss
+// events due to network blips; this ensures they self-correct without reconnect.
+const snapshotPushInterval = setInterval(() => {
+  if (sseClients.size > 0) {
+    const snapshot = registry.list();
+    broadcastSSE("snapshot_sync", { sessions: snapshot, ts: Date.now() });
+  }
+}, 60_000);
+
 let isShuttingDown = false;
 
 async function gracefulShutdown(signal: string): Promise<void> {
@@ -529,6 +539,7 @@ async function gracefulShutdown(signal: string): Promise<void> {
   sseClients.clear();
   clearInterval(keepAliveInterval);
   clearInterval(sweeperInterval);
+  clearInterval(snapshotPushInterval);
 
   // Drain window for in-flight requests
   await Bun.sleep(2000);
@@ -877,6 +888,7 @@ function add(cls,text){
 es.onopen=()=>{st.textContent="SSE Connected";st.style.color="#0f0"};
 es.onerror=()=>{st.textContent="SSE Disconnected";st.style.color="#f00"};
 es.addEventListener("snapshot",e=>{add("snapshot","SNAPSHOT "+e.data)});
+es.addEventListener("snapshot_sync",e=>{add("snapshot","SYNC "+e.data)});
 es.addEventListener("signal",e=>{const d=JSON.parse(e.data);add("signal","["+d.state+"] "+d.detail+" ("+d.eventName+")")});
 es.addEventListener("gap",e=>{const d=JSON.parse(e.data);add("gap","GAP "+d.gapSize+" events missed")});
 es.addEventListener("client_connected",e=>{const d=JSON.parse(e.data);add("client","CLIENT #"+d.clientId+" connected ("+d.totalClients+" total)")});
