@@ -536,6 +536,14 @@ es.onmessage=e=>{add("other",e.type+": "+e.data)};
       });
     }
 
+    if (request.method === "GET" && url.pathname === "/help") {
+      return json({
+        ok: true,
+        version: "0.10.0",
+        routes: ROUTE_TABLE,
+      });
+    }
+
     if (request.method === "GET" && url.pathname === "/version") {
       return json({
         ok: true,
@@ -995,6 +1003,32 @@ es.onmessage=e=>{add("other",e.type+": "+e.data)};
 
     return json({ ok: false, error: "not found" }, { status: 404 });
 }
+
+// Route table for /help endpoint
+const ROUTE_TABLE: { method: string; path: string; description: string; auth: boolean }[] = [
+  { method: "POST", path: "/hook/claude", description: "Receive Claude hook events", auth: true },
+  { method: "POST", path: "/hook/zellij", description: "Receive Zellij monitor events", auth: true },
+  { method: "POST", path: "/hook/zellij/batch", description: "Batch Zellij events (JSON array)", auth: true },
+  { method: "GET", path: "/events", description: "SSE stream for real-time subscription", auth: false },
+  { method: "GET", path: "/events/recent", description: "Recent event log (sequential IDs)", auth: false },
+  { method: "GET", path: "/events/log", description: "Persistent event history from events.ndjson", auth: false },
+  { method: "GET", path: "/events/test", description: "HTML SSE test page", auth: false },
+  { method: "POST", path: "/event/manual", description: "Submit manual events", auth: true },
+  { method: "GET", path: "/health", description: "Bridge health check (JSON)", auth: false },
+  { method: "GET", path: "/healthz", description: "Lightweight liveness probe (plain ok)", auth: false },
+  { method: "GET", path: "/action", description: "List allowed Zellij actions", auth: false },
+  { method: "POST", path: "/action", description: "Execute Zellij CLI action (whitelisted)", auth: true },
+  { method: "GET", path: "/web", description: "Zellij web config (URL, tokenSet, session)", auth: false },
+  { method: "GET", path: "/web/token", description: "Zellij web token (authenticated)", auth: true },
+  { method: "GET", path: "/status", description: "Unified overview (health+version+web+heap)", auth: false },
+  { method: "GET", path: "/snapshot", description: "Full session state for drift correction", auth: false },
+  { method: "GET", path: "/sessions", description: "Active session list", auth: false },
+  { method: "GET", path: "/sessions/:id", description: "Session detail lookup", auth: false },
+  { method: "GET", path: "/sessions/:id/events", description: "Per-session event history", auth: false },
+  { method: "GET", path: "/stats", description: "Dedup stats, heap stats, runtime info", auth: false },
+  { method: "GET", path: "/version", description: "Bridge version, runtime, arch", auth: false },
+  { method: "GET", path: "/help", description: "This route table", auth: false },
+];
 
 console.log(
   `[bridge] listening on http://${server.hostname}:${server.port} dryRun=${config.dryRun} starOffice=${config.starOfficeUrl || "none"}`,

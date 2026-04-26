@@ -45,6 +45,7 @@ ProtectSystem=full
 
 NoNewPrivileges=yes
 PrivateDevices=yes
+ProtectProc=invisible
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
 ProtectKernelTunables=yes
 ProtectKernelModules=yes
