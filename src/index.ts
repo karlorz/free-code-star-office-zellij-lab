@@ -17,7 +17,7 @@ const SSE_MAX_BUFFERED_MESSAGES = 32; // Drop clients with more than this many b
 let sseEventSeq = 0;
 let sseClientSeq = 0;
 const sseClients = new Map<number, { controller: ReadableStreamDefaultController; buffered: number; connectedAt: number }>();
-const BRIDGE_VERSION = "0.39.0";
+const BRIDGE_VERSION = "0.40.0";
 
 // Shared environment for zellij CLI subprocess calls
 function zellijEnv(session?: string): Record<string, string | undefined> {
@@ -39,6 +39,8 @@ const sseEventLog: { id: number; event: string; payload: unknown }[] = [];
 const lastSignalByKey = new Map<string, string>();
 const dedupCounts = new Map<string, { seen: number; passed: number; lastSeenAt: number }>();
 const DEDUP_TTL_MS = 30 * 60 * 1000; // 30 minutes — evict stale dedup entries
+const ALERT_DEDUP_TTL_MS = 60 * 1000; // 1 minute — alert webhook dedup window
+const alertDedup = new Map<string, number>(); // groupKey:status -> timestamp
 const encoder = new TextEncoder();
 
 // Prometheus metrics counters
@@ -1027,6 +1029,15 @@ async function handleRequest(request: Request, url: URL): Promise<Response> {
       }
       const status = body.status as string || "unknown";
       const alerts = (body.alerts || []) as Record<string, unknown>[];
+
+      // Idempotency: skip duplicate alert notifications within 60s window
+      const dedupKey = `${body.groupKey || "none"}:${status}`;
+      const dedupEntry = alertDedup.get(dedupKey);
+      if (dedupEntry && Date.now() - dedupEntry < ALERT_DEDUP_TTL_MS) {
+        return json({ ok: true, broadcast: false, reason: "dedup" });
+      }
+      alertDedup.set(dedupKey, Date.now());
+
       const summary = {
         status,
         alertCount: alerts.length,
