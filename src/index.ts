@@ -16,7 +16,7 @@ const SSE_MAX_BUFFERED_MESSAGES = 32; // Drop clients with more than this many b
 let sseEventSeq = 0;
 let sseClientSeq = 0;
 const sseClients = new Map<number, { controller: ReadableStreamDefaultController; buffered: number; connectedAt: number }>();
-const BRIDGE_VERSION = "0.33.0";
+const BRIDGE_VERSION = "0.34.0";
 
 // Shared environment for zellij CLI subprocess calls
 function zellijEnv(session?: string): Record<string, string | undefined> {
@@ -2317,11 +2317,10 @@ setInterval(()=>{fetch("/status").then(r=>r.json()).then(d=>{
       }
 
       const results: { index: number; ok: boolean; action: string; exitCode?: number; result?: unknown; stderr?: string | null; error?: string }[] = [];
-      for (let i = 0; i < actions.length; i++) {
-        const { action, args: rawArgs, session: rawSession } = actions[i];
+      // Run actions concurrently — each is independent, reduces wall-clock from N*latency to max(latency)
+      const batchPromises = actions.map(async ({ action, args: rawArgs, session: rawSession }, i) => {
         if (!action || !ALLOWED_ACTIONS.has(action)) {
-          results.push({ index: i, ok: false, action: action || "", error: "disallowed action" });
-          continue;
+          return { index: i, ok: false, action: action || "", error: "disallowed action" };
         }
         const session = rawSession || config.zellijSessionName || "main";
         const args = rawArgs || [];
@@ -2337,11 +2336,13 @@ setInterval(()=>{fetch("/status").then(r=>r.json()).then(d=>{
             try { parsed = JSON.parse(parsed); } catch { /* keep as string */ }
           }
           metrics.actionsExecuted++;
-          results.push({ index: i, ok: exitCode === 0, action, exitCode, result: parsed || null, stderr: stderr.trim() || null });
+          return { index: i, ok: exitCode === 0, action, exitCode, result: parsed || null, stderr: stderr.trim() || null };
         } catch (error) {
-          results.push({ index: i, ok: false, action, error: error instanceof Error ? error.message : String(error) });
+          return { index: i, ok: false, action, error: error instanceof Error ? error.message : String(error) };
         }
-      }
+      });
+      const batchResults = await Promise.all(batchPromises);
+      results.push(...batchResults);
       const okCount = results.filter(r => r.ok).length;
       broadcastSSE("action_batch_executed", { total: actions.length, ok: okCount, failed: actions.length - okCount });
       return json({ ok: okCount === actions.length, total: actions.length, okCount, results });
