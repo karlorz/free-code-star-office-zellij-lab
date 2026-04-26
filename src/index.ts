@@ -17,7 +17,7 @@ const SSE_MAX_BUFFERED_MESSAGES = 32; // Drop clients with more than this many b
 let sseEventSeq = 0;
 let sseClientSeq = 0;
 const sseClients = new Map<number, { controller: ReadableStreamDefaultController; buffered: number; connectedAt: number }>();
-const BRIDGE_VERSION = "0.40.0";
+const BRIDGE_VERSION = "0.41.0";
 
 // Shared environment for zellij CLI subprocess calls
 function zellijEnv(session?: string): Record<string, string | undefined> {
@@ -2315,12 +2315,41 @@ setInterval(()=>{fetch("/status").then(r=>r.json()).then(d=>{
 
       const session = body.session || config.zellijSessionName || "main";
       const args = body.args || [];
-      const env = zellijEnv(session);
 
       try {
         let stdout = "";
         let stderr = "";
         let exitCode = 0;
+
+        // HTTP-fast path: web --status calls zellij web server directly
+        if (body.action === "web --status") {
+          try {
+            const webBaseUrl = config.zellijWebUrl?.replace(/\/$/, "") || "http://127.0.0.1:8082";
+            // Extract host:port from web URL for direct local call
+            const webUrl = new URL(webBaseUrl);
+            const localUrl = `http://127.0.0.1:${webUrl.port || 8082}/info/version`;
+            const resp = await fetch(localUrl, { signal: AbortSignal.timeout(3000) });
+            if (resp.ok) {
+              stdout = await resp.text();
+              broadcastSSE("action_executed", { action: body.action, args, session, exitCode: 0, via: "http" });
+              metrics.actionsExecuted++;
+              metrics.ipcActions.set("web --status", (metrics.ipcActions.get("web --status") || 0) + 1);
+              return json({
+                ok: true,
+                action: body.action,
+                args,
+                session,
+                exitCode: 0,
+                via: "http",
+                result: `Web server online with version: ${stdout.trim()}. Checked: ${config.zellijWebUrl || localUrl}`,
+              });
+            }
+          } catch {
+            // HTTP failed — fall through to CLI spawn
+          }
+        }
+
+        const env = zellijEnv(session);
 
         if (IPC_ELIGIBLE.has(body.action)) {
           // Fast path: direct UDS+protobuf IPC (avg 13ms vs 48ms CLI)
