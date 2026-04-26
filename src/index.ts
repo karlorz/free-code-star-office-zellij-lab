@@ -40,6 +40,7 @@ const metrics = {
   sseReplayGaps: 0,         // Stale Last-Event-ID → gap notification
   signalsProcessed: 0,
   signalsDuplicate: 0,
+  signalsSuppressed: 0,     // Cumulative duplicates prevented from broadcast
   actionsExecuted: 0,
   tokenRefreshes: 0,
   tokenRevocations: 0,
@@ -305,6 +306,9 @@ function buildPrometheusMetrics(): string {
   lines.push(`# HELP bridge_signals_duplicate_total Total duplicate signals suppressed`);
   lines.push(`# TYPE bridge_signals_duplicate_total counter`);
   lines.push(`bridge_signals_duplicate_total ${metrics.signalsDuplicate}`);
+  lines.push(`# HELP bridge_signals_suppressed_total Cumulative duplicate signals suppressed (running total)`);
+  lines.push(`# TYPE bridge_signals_suppressed_total counter`);
+  lines.push(`bridge_signals_suppressed_total ${metrics.signalsSuppressed}`);
   lines.push(`# HELP bridge_sessions_current Current active sessions`);
   lines.push(`# TYPE bridge_sessions_current gauge`);
   lines.push(`bridge_sessions_current ${registry.list().length}`);
@@ -365,11 +369,6 @@ function buildPrometheusMetrics(): string {
     lines.push(`bridge_http_request_duration_milliseconds_sum{path="${path}"} ${entry.sum.toFixed(2)}`);
     lines.push(`bridge_http_request_duration_milliseconds_count{path="${path}"} ${entry.count}`);
   }
-  // Caddy upstream health gauge (sourced from Caddy admin API)
-  try {
-    const caddyResp = fetch("http://127.0.0.1:2019/metrics");
-    // Sync fetch not available; skip in buildPrometheusMetrics (added to /status instead)
-  } catch {}
   return lines.join("\n") + "\n";
 }
 
@@ -443,6 +442,7 @@ async function processSignal(
 
   if (isDuplicate) {
     metrics.signalsDuplicate++;
+    metrics.signalsSuppressed++;
     return json({
       ok: true,
       ignored: true,
@@ -569,6 +569,7 @@ async function gracefulShutdown(signal: string): Promise<void> {
         sseReplayGaps: metrics.sseReplayGaps,
         signalsProcessed: metrics.signalsProcessed,
         signalsDuplicate: metrics.signalsDuplicate,
+        signalsSuppressed: metrics.signalsSuppressed,
         actionsExecuted: metrics.actionsExecuted,
         tokenRefreshes: metrics.tokenRefreshes,
         tokenRevocations: metrics.tokenRevocations,
@@ -590,6 +591,7 @@ process.on("SIGINT", () => gracefulShutdown("SIGINT"));
 const server = Bun.serve({
   hostname: config.host,
   port: config.port,
+  reusePort: true, // SO_REUSEPORT on Linux: enables kernel-level load balancing across multiple processes
   idleTimeout: 30, // Default for HTTP request timeout; SSE uses server.timeout(req,0) per-request
   fetch: async (request: Request, srv: any): Promise<Response | undefined> => {
     const url = new URL(request.url);
@@ -975,7 +977,7 @@ setInterval(()=>{fetch("/status").then(r=>r.json()).then(d=>{
     if (request.method === "GET" && url.pathname === "/help") {
       return json({
         ok: true,
-        version: "0.13.0",
+        version: "0.14.0",
         routes: ROUTE_TABLE,
       });
     }
@@ -983,7 +985,7 @@ setInterval(()=>{fetch("/status").then(r=>r.json()).then(d=>{
     if (request.method === "GET" && url.pathname === "/version") {
       return json({
         ok: true,
-        version: "0.13.0",
+        version: "0.14.0",
         runtime: `bun ${Bun.version}`,
         arch: process.arch,
         platform: process.platform,
@@ -1602,7 +1604,7 @@ setInterval(()=>{fetch("/status").then(r=>r.json()).then(d=>{
       } catch {}
       return json({
         ok: true,
-        version: "0.13.0",
+        version: "0.14.0",
         runtime: `bun ${Bun.version}`,
         arch: process.arch,
         platform: process.platform,
