@@ -446,9 +446,10 @@ const server = Bun.serve({
               stderr: "pipe",
               env: { ...process.env, HOME: "/root", XDG_RUNTIME_DIR: "/run/user/0", ZELLIJ_SESSION_NAME: config.zellijSessionName || "" },
             });
-            const exitCode = proc.exitCode;
             const stdout = proc.stdout ? await new Response(proc.stdout).text() : "";
-            ws.send(JSON.stringify({ type: "action_result", ok: exitCode === 0, action, args, exitCode, stdout: stdout.slice(0, 4096) }));
+            const stderr = proc.stderr ? await new Response(proc.stderr).text() : "";
+            const exitCode = await proc.exited;
+            ws.send(JSON.stringify({ type: "action_result", ok: exitCode === 0, action, args, exitCode, stdout: stdout.slice(0, 4096), stderr: stderr.trim().slice(0, 1024) || null }));
           } catch (error) {
             ws.send(JSON.stringify({ type: "action_result", ok: false, action, error: String(error) }));
           }
