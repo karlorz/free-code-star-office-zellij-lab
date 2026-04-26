@@ -30,6 +30,7 @@ function formatSSE(data: unknown, event?: string, id?: number): Uint8Array {
   const parts: string[] = [];
   if (id !== undefined) parts.push(`id: ${id}`);
   if (event) parts.push(`event: ${event}`);
+  parts.push(`retry: 3000`);
   parts.push(`data: ${JSON.stringify(data)}`);
   parts.push("", "");
   return encoder.encode(parts.join("\n"));
@@ -44,7 +45,8 @@ function broadcastSSE(event: string, payload: unknown): number {
   for (const [cid, client] of sseClients) {
     try {
       client.controller.enqueue(message);
-      client.buffered++;
+      // Successful enqueue means the stream absorbed it — no accumulation
+      // buffered tracks pending writes that haven't been flushed yet
       // Check backpressure: drop slow clients
       if (client.buffered > SSE_MAX_BUFFERED_MESSAGES) {
         console.warn(`[bridge] dropping slow SSE client ${cid} (${client.buffered} buffered messages)`);
@@ -55,7 +57,12 @@ function broadcastSSE(event: string, payload: unknown): number {
         sseClients.delete(cid);
       }
     } catch {
-      sseClients.delete(cid);
+      // Enqueue failed — increment buffer count for this stalled client
+      client.buffered++;
+      if (client.buffered > SSE_MAX_BUFFERED_MESSAGES) {
+        console.warn(`[bridge] dropping stalled SSE client ${cid} (${client.buffered} failed enqueues)`);
+        sseClients.delete(cid);
+      }
     }
   }
 }
@@ -229,6 +236,21 @@ const keepAliveInterval = setInterval(() => {
   }
 }, 15_000);
 
+// Periodic sweeper: prune stale dedup entries and log summary
+const sweeperInterval = setInterval(() => {
+  const now = Date.now();
+  // Prune dedup entries that haven't been seen recently
+  for (const [key, stats] of dedupCounts) {
+    if (stats.seen === stats.passed && stats.seen < 2) {
+      dedupCounts.delete(key);
+      lastSignalByKey.delete(key);
+    }
+  }
+  if (sseClients.size > 0 || sseEventLog.length > 0) {
+    console.log(`[bridge] sweep: ${sseClients.size} clients, ${sseEventLog.length} events, ${dedupCounts.size} dedup keys, seq=${sseEventSeq}`);
+  }
+}, 60_000);
+
 let isShuttingDown = false;
 
 async function gracefulShutdown(signal: string): Promise<void> {
@@ -245,6 +267,7 @@ async function gracefulShutdown(signal: string): Promise<void> {
   }
   sseClients.clear();
   clearInterval(keepAliveInterval);
+  clearInterval(sweeperInterval);
 
   await Bun.sleep(1000);
   process.exit(0);
