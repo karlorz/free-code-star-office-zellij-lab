@@ -7,7 +7,7 @@ StartLimitIntervalSec=300s
 
 [Service]
 Type=notify
-NotifyAccess=main
+NotifyAccess=all
 ExecStart=/opt/bridge-watchdog.sh /root/.bun/bin/bun run src/index.ts
 WorkingDirectory=/root/free-code-star-office-zellij-lab
 Environment=BRIDGE_HOST=127.0.0.1
@@ -35,6 +35,8 @@ UMask=0077
 TimeoutStopSec=30
 # Watchdog: if /healthz fails for 30s, systemd restarts the bridge
 WatchdogSec=30
+# Startup timeout: give bridge time for Bun.serve init + proto loading
+TimeoutStartSec=90
 # KillMode=mixed: SIGTERM only to main PID, SIGKILL to remaining cgroup after timeout
 # Safer for Bun subprocess scenarios (zellij action, zstd, etc.)
 KillMode=mixed
