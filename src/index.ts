@@ -534,6 +534,7 @@ es.addEventListener("client_connected",e=>{const d=JSON.parse(e.data);add("clien
 es.addEventListener("client_disconnected",e=>{const d=JSON.parse(e.data);add("client","CLIENT #"+d.clientId+" disconnected ("+d.totalClients+" total)")});
 es.addEventListener("backpressure",e=>{add("backpressure","BACKPRESSURE "+e.data)});
 es.addEventListener("shutdown",e=>{add("other","SHUTDOWN "+e.data)});
+es.addEventListener("action_executed",e=>{const d=JSON.parse(e.data);add("signal","ACTION "+d.action+" exit="+d.exitCode)});
 es.onmessage=e=>{add("other",e.type+": "+e.data)};
 </script></body></html>`, {
         status: 200,
@@ -838,6 +839,20 @@ es.onmessage=e=>{add("other",e.type+": "+e.data)};
         ok: true,
         webUrl: config.zellijWebUrl || null,
         webTokenSet: config.zellijWebToken ? true : false,
+        sessionName: config.zellijSessionName || null,
+      });
+    }
+
+    // Authenticated endpoint: returns the web token for bridge consumers
+    // that need to open the Zellij web terminal programmatically
+    if (request.method === "GET" && url.pathname === "/web/token") {
+      if (!isAuthorized(request)) {
+        return json({ ok: false, error: "authentication required" }, { status: 401 });
+      }
+      return json({
+        ok: true,
+        webUrl: config.zellijWebUrl || null,
+        webToken: config.zellijWebToken || null,
         sessionName: config.zellijSessionName || null,
       });
     }
