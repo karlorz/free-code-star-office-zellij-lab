@@ -851,11 +851,25 @@ es.onmessage=e=>{add("other",e.type+": "+e.data)};
       if (!isAuthorized(request)) {
         return json({ ok: false, error: "authentication required" }, { status: 401 });
       }
+      const webUrl = config.zellijWebUrl || null;
+      const webToken = config.zellijWebToken || null;
+      const sessionName = config.zellijSessionName || null;
+      // Construct full attach URL with token for one-click browser launch
+      let attachUrl: string | null = null;
+      if (webUrl && webToken) {
+        try {
+          const base = webUrl.replace(/\/$/, "");
+          attachUrl = sessionName
+            ? `${base.replace(/\/[^/]*$/, "")}/${sessionName}?token=${encodeURIComponent(webToken)}`
+            : `${base}?token=${encodeURIComponent(webToken)}`;
+        } catch {}
+      }
       return json({
         ok: true,
-        webUrl: config.zellijWebUrl || null,
-        webToken: config.zellijWebToken || null,
-        sessionName: config.zellijSessionName || null,
+        webUrl,
+        webToken,
+        sessionName,
+        attachUrl,
       });
     }
 
