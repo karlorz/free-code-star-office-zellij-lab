@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit",
     "check:secrets": "bash scripts/check-no-secrets.sh",
     "check:hooks": "bash scripts/check-hook-coverage.sh",
+    "check:live-artifact": "bash scripts/check-live-capture-artifact.sh",
     "check": "bun run typecheck && bun run check:hooks && bun run check:secrets"
   },
   "devDependencies": {

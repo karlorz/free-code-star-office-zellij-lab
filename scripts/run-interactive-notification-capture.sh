@@ -19,6 +19,7 @@ ALLOW_RISKY_CAPTURE="${ALLOW_RISKY_CAPTURE:-false}"
 BRIDGE_URL="http://${BRIDGE_HOST}:${BRIDGE_PORT}"
 EVENTS_LOG="${REPO_ROOT}/tmp/events.ndjson"
 BRIDGE_LOG="${REPO_ROOT}/tmp/live-bridge.log"
+POST_CAPTURE_CHECK="${POST_CAPTURE_CHECK:-true}"
 
 if [[ -z "${LEADER_PROMPT:-}" ]]; then
   LEADER_PROMPT="Use the team tool now. Create a team named notif-capture. Then spawn one worker named worker-1 in that team with cwd set to ${REPO_ROOT}. Have the worker run a Bash tool call for: touch worker-permission-probe.txt. After dispatching the worker, do nothing else and wait so leader-side notifications can appear."
@@ -52,6 +53,7 @@ Environment overrides:
   ZELLIJ_WEB_TOKEN     Optional operator token; only set/unset status is printed
   CAPTURE_BATCH        Default: safe-lifecycle; use --list-batches for options
   ALLOW_RISKY_CAPTURE  Default: false; required for risky trigger guidance
+  POST_CAPTURE_CHECK   Default: true; run read-only artifact checker after runtime exits
 EOF
 }
 
@@ -325,11 +327,12 @@ print_batch_guidance
 echo "[interactive-capture] recommended leader prompt:"
 printf '%s\n' "${LEADER_PROMPT}"
 
+runtime_status=0
 (
   cd "${FREE_CODE_ROOT}"
   env "${runtime_env[@]}" \
     bun run "${FREE_CODE_ENTRYPOINT}" "${plugin_args[@]}" "${runtime_args[@]}"
-)
+) || runtime_status=$?
 
 cat <<EOF
 [interactive-capture] capture finished
@@ -341,3 +344,12 @@ cat <<EOF
   - TaskCompleted or SubagentStop events that cleanly remove workers
 [interactive-capture] bridge log: ${BRIDGE_LOG}
 EOF
+
+if [[ "${POST_CAPTURE_CHECK}" == "true" ]]; then
+  echo "[interactive-capture] running read-only post-capture artifact check"
+  if ! bash "${SCRIPT_DIR}/check-live-capture-artifact.sh" "${EVENTS_LOG}"; then
+    echo "[interactive-capture] post-capture artifact check reported missing live events" >&2
+  fi
+fi
+
+exit "${runtime_status}"

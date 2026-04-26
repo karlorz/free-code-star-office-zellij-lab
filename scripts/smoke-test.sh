@@ -202,6 +202,24 @@ curl -fsS -X POST "${BRIDGE_URL}/hook/claude" \
 curl -fsS -X POST "${BRIDGE_URL}/hook/claude" \
   -H "content-type: application/json" \
   -d '{"source":"smoke","event_name":"StopFailure","payload":{"session_id":"smoke-stop-failure","error":"stop failed for smoke coverage"}}' >/dev/null
+curl -fsS -X POST "${BRIDGE_URL}/hook/claude" \
+  -H "content-type: application/json" \
+  -d '{"source":"smoke","event_name":"PostToolUse","payload":{"session_id":"smoke-post-tool","tool_name":"Bash","tool_response":"ok"}}' >/dev/null
+curl -fsS -X POST "${BRIDGE_URL}/hook/claude" \
+  -H "content-type: application/json" \
+  -d '{"source":"smoke","event_name":"Setup","payload":{"session_id":"smoke-setup","status":"setup complete"}}' >/dev/null
+curl -fsS -X POST "${BRIDGE_URL}/hook/claude" \
+  -H "content-type: application/json" \
+  -d '{"source":"smoke","event_name":"SubagentStart","payload":{"session_id":"smoke-subagent-start","agent_id":"worker-start","agent_type":"general-purpose","task_subject":"synthetic start"}}' >/dev/null
+curl -fsS -X POST "${BRIDGE_URL}/hook/claude" \
+  -H "content-type: application/json" \
+  -d '{"source":"smoke","event_name":"TeammateIdle","payload":{"session_id":"smoke-teammate-idle","teammate_name":"worker-idle","summary":"synthetic idle"}}' >/dev/null
+
+for event_name in Elicitation ElicitationResult ConfigChange WorktreeCreate WorktreeRemove InstructionsLoaded CwdChanged FileChanged PreCompact PostCompact; do
+  curl -fsS -X POST "${BRIDGE_URL}/hook/claude" \
+    -H "content-type: application/json" \
+    -d "{\"source\":\"smoke\",\"event_name\":\"${event_name}\",\"payload\":{\"session_id\":\"smoke-${event_name}\",\"detail\":\"synthetic ${event_name}\",\"worktree\":{\"path\":\"/tmp/smoke-worktree\",\"branch\":\"smoke-branch\"}}}" >/dev/null
+done
 
 echo "[15/31] task metadata projection"
 curl -fsS -X POST "${BRIDGE_URL}/hook/claude" \
@@ -718,14 +736,33 @@ for entry in entries:
     if missing:
         raise SystemExit(f"event log entry missing keys: {missing}")
 
-for event_name in ["PostToolUseFailure", "PermissionDenied", "StopFailure"]:
-    mapped_error = next((entry for entry in entries if ((entry.get("rawEvent") or {}).get("event_name") == event_name)), None)
-    if not mapped_error:
+expected_event_states = {
+    "PostToolUse": "executing",
+    "PostToolUseFailure": "error",
+    "PermissionDenied": "error",
+    "StopFailure": "error",
+    "Setup": "executing",
+    "SubagentStart": "executing",
+    "TeammateIdle": "idle",
+    "Elicitation": "executing",
+    "ElicitationResult": "executing",
+    "ConfigChange": "syncing",
+    "WorktreeCreate": "syncing",
+    "WorktreeRemove": "syncing",
+    "InstructionsLoaded": "syncing",
+    "CwdChanged": "syncing",
+    "FileChanged": "syncing",
+    "PreCompact": "syncing",
+    "PostCompact": "syncing",
+}
+for event_name, expected_state in expected_event_states.items():
+    mapped_event = next((entry for entry in entries if ((entry.get("rawEvent") or {}).get("event_name") == event_name)), None)
+    if not mapped_event:
         raise SystemExit(f"expected mapped {event_name} event log entry")
-    if mapped_error.get("ignored") is not False:
+    if mapped_event.get("ignored") is not False:
         raise SystemExit(f"expected {event_name} event log entry to be mapped")
-    if mapped_error.get("signal", {}).get("state") != "error":
-        raise SystemExit(f"expected {event_name} signal.state='error'")
+    if mapped_event.get("signal", {}).get("state") != expected_state:
+        raise SystemExit(f"expected {event_name} signal.state={expected_state!r}")
 
 mapped = next((entry for entry in entries if ((entry.get("rawEvent") or {}).get("event_name") == "PermissionRequest")), None)
 if not mapped:

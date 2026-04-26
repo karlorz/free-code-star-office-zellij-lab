@@ -94,6 +94,15 @@ This helper starts the same bridge and plugin wiring, but launches an interactiv
 Use it from a pane-capable interactive terminal, create a team from the leader session, spawn a worker, and then have the worker attempt the first concrete permission probe `touch worker-permission-probe.txt` so the leader-side `Notification` hook can surface.
 The helper now also prints a recommended leader prompt before launching the runtime, and you can override that text with `LEADER_PROMPT=...` when you want to try a narrower or more forceful approval-triggering worker action.
 
+After a live run, summarize the captured artifact without triggering any new runtime actions:
+
+```bash
+bun run check:live-artifact
+# or: bash ./scripts/check-live-capture-artifact.sh tmp/events.ndjson
+```
+
+The checker reports observed hook names, missing required live lifecycle events, and whether the expected interactive worker sequence appears in order. The interactive helper also runs this read-only check automatically after the runtime exits; set `POST_CAPTURE_CHECK=false` to skip it.
+
 7. Attach a Zellij session rooted in the local `free-code` workspace:
 
 ```bash
