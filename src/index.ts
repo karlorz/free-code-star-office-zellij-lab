@@ -17,7 +17,7 @@ const SSE_MAX_BUFFERED_MESSAGES = 32; // Drop clients with more than this many b
 let sseEventSeq = 0;
 let sseClientSeq = 0;
 const sseClients = new Map<number, { controller: ReadableStreamDefaultController; buffered: number; connectedAt: number }>();
-const BRIDGE_VERSION = "0.43.0";
+const BRIDGE_VERSION = "0.44.0";
 
 // Shared environment for zellij CLI subprocess calls
 function zellijEnv(session?: string): Record<string, string | undefined> {
@@ -698,6 +698,10 @@ const sweeperInterval = setInterval(() => {
   if (sseClients.size > 0 || sseEventLog.length > 0 || evictedByTtl > 0) {
     console.log(`[bridge] sweep: ${sseClients.size} clients, ${sseEventLog.length} events, ${dedupCounts.size} dedup keys${evictedByTtl ? `, evicted ${evictedByTtl} by TTL` : ""}, seq=${sseEventSeq}`);
   }
+  // Alert dedup cleanup: entries older than ALERT_DEDUP_TTL_MS
+  for (const [key, ts] of alertDedup) {
+    if (now - ts > ALERT_DEDUP_TTL_MS) alertDedup.delete(key);
+  }
 }, 60_000);
 
 // Periodic log sink flush — FileSink buffers writes; flush every 5s for durability
@@ -1027,6 +1031,10 @@ async function handleRequest(request: Request, url: URL): Promise<Response> {
 
     // Alertmanager webhook — must be before global POST auth check (Alertmanager cannot send custom headers)
     if (request.method === "POST" && url.pathname === "/alert") {
+      // Return 503 during shutdown so Alertmanager retries delivery
+      if (isShuttingDown) {
+        return json({ ok: false, error: "shutting down" }, { status: 503 });
+      }
       let body: Record<string, unknown>;
       try {
         body = await request.json() as Record<string, unknown>;
