@@ -31,6 +31,10 @@ LimitNOFILE=65535
 MemoryHigh=256M
 # Hard limit: kill at 512MB to prevent runaway memory from crashing the host
 MemoryMax=512M
+# Protected baseline: 64MB guaranteed before reclaim
+MemoryLow=64M
+# Cap swap usage to prevent silent memory creep
+MemorySwapMax=128M
 # On OOM kill: restart the service (don't leave it dead)
 OOMPolicy=stop
 

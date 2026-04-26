@@ -696,7 +696,7 @@ function sendAction(action,...args){
 async function tokenRefresh(){
   if(!secret){add("other","no auth secret configured");return}
   try{
-    const r=await fetch("/web/token/refresh",{headers:{"x-bridge-secret":secret}});
+    const r=await fetch("/web/token/refresh",{method:"POST",headers:{"x-bridge-secret":secret}});
     const d=await r.json();
     if(d.ok){
       tokenStatus.textContent="token: "+(d.tokenName||d.webToken?.slice(0,8)+"...");
@@ -1024,7 +1024,7 @@ setInterval(()=>{if(ws&&ws.readyState===1)ws.send(JSON.stringify({type:"ping"}))
       });
     }
 
-    if (request.method === "GET" && url.pathname === "/web/token/refresh") {
+    if (request.method === "POST" && url.pathname === "/web/token/refresh") {
       if (!isAuthorized(request)) {
         return json({ ok: false, error: "authentication required" }, { status: 401 });
       }
@@ -1062,6 +1062,24 @@ setInterval(()=>{if(ws&&ws.readyState===1)ws.send(JSON.stringify({type:"ping"}))
         if (newToken) {
           (config as unknown as Record<string, unknown>).zellijWebToken = newToken;
           (config as unknown as Record<string, unknown>).zellijWebTokenName = newTokenName;
+          // Persist to env file so token survives restart
+          try {
+            const envPath = process.env.BRIDGE_ENV_FILE || "/etc/star-office-bridge.env";
+            const envContent = await readFile(envPath, "utf8");
+            const lines = envContent.split("\n");
+            let foundToken = false, foundName = false;
+            const updated = lines.map(line => {
+              if (line.startsWith("ZELLIJ_WEB_TOKEN=")) { foundToken = true; return `ZELLIJ_WEB_TOKEN=${newToken}`; }
+              if (line.startsWith("ZELLIJ_WEB_TOKEN_NAME=")) { foundName = true; return `ZELLIJ_WEB_TOKEN_NAME=${newTokenName}`; }
+              return line;
+            });
+            if (!foundToken) updated.push(`ZELLIJ_WEB_TOKEN=${newToken}`);
+            if (!foundName) updated.push(`ZELLIJ_WEB_TOKEN_NAME=${newTokenName}`);
+            const { writeFile } = await import("node:fs/promises");
+            await writeFile(envPath, updated.join("\n") + "\n", "utf8");
+          } catch (err) {
+            console.warn("[bridge] failed to persist token to env file:", err);
+          }
           broadcastSSE("web_token_refreshed", { tokenSet: true, tokenName: newTokenName, timestamp: new Date().toISOString() });
         }
 
@@ -1383,7 +1401,7 @@ const ROUTE_TABLE: { method: string; path: string; description: string; auth: bo
   { method: "POST", path: "/action", description: "Execute Zellij CLI action (whitelisted)", auth: true },
   { method: "GET", path: "/web", description: "Zellij web config (URL, tokenSet, session)", auth: false },
   { method: "GET", path: "/web/token", description: "Zellij web token (authenticated)", auth: true },
-  { method: "GET", path: "/web/token/refresh", description: "Refresh Zellij web token via CLI (authenticated)", auth: true },
+  { method: "POST", path: "/web/token/refresh", description: "Refresh Zellij web token via CLI (authenticated)", auth: true },
   { method: "POST", path: "/web/token/revoke", description: "Revoke token by name or revoke all (authenticated)", auth: true },
   { method: "GET", path: "/web/tokens", description: "List token names and creation dates (authenticated)", auth: true },
   { method: "GET", path: "/status", description: "Unified overview (health+version+web+heap)", auth: false },
