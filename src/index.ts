@@ -434,22 +434,33 @@ const server = Bun.serve({
           // Execute a Zellij action via WebSocket (same logic as POST /action)
           const action = typeof parsed.action === "string" ? parsed.action : "";
           const args = Array.isArray(parsed.args) ? parsed.args.map(String) : [];
+          const wsSession = typeof parsed.session === "string" ? parsed.session : undefined;
           if (!action || !ALLOWED_ACTIONS.has(action)) {
             ws.send(JSON.stringify({ type: "action_result", ok: false, error: "disallowed action", action }));
             return;
           }
-          const spawnArgs = ["action", action, ...args];
-          if (config.zellijSessionName) spawnArgs.push("--session", config.zellijSessionName);
+          const session = wsSession || config.zellijSessionName || "main";
+          const env = {
+            ...process.env,
+            ZELLIJ_SESSION_NAME: session,
+            HOME: process.env.HOME || "/root",
+            XDG_RUNTIME_DIR: process.env.XDG_RUNTIME_DIR || "/run/user/0",
+          };
           try {
-            const proc = Bun.spawn(["zellij", ...spawnArgs], {
+            const proc = Bun.spawn(["zellij", "action", action, ...args], {
               stdout: "pipe",
               stderr: "pipe",
-              env: { ...process.env, HOME: "/root", XDG_RUNTIME_DIR: "/run/user/0", ZELLIJ_SESSION_NAME: config.zellijSessionName || "" },
+              env,
             });
-            const stdout = proc.stdout ? await new Response(proc.stdout).text() : "";
-            const stderr = proc.stderr ? await new Response(proc.stderr).text() : "";
+            const stdout = await new Response(proc.stdout).text();
+            const stderr = await new Response(proc.stderr).text();
             const exitCode = await proc.exited;
-            ws.send(JSON.stringify({ type: "action_result", ok: exitCode === 0, action, args, exitCode, stdout: stdout.slice(0, 4096), stderr: stderr.trim().slice(0, 1024) || null }));
+            // Parse JSON output if applicable
+            let parsed_output: unknown = stdout.trim();
+            if (typeof parsed_output === "string" && (parsed_output.startsWith("[") || parsed_output.startsWith("{"))) {
+              try { parsed_output = JSON.parse(parsed_output); } catch { /* keep as string */ }
+            }
+            ws.send(JSON.stringify({ type: "action_result", ok: exitCode === 0, action, args, session, exitCode, result: parsed_output || null, stderr: stderr.trim().slice(0, 1024) || null }));
           } catch (error) {
             ws.send(JSON.stringify({ type: "action_result", ok: false, action, error: String(error) }));
           }
