@@ -6,7 +6,7 @@ Wants=star-office-bridge.service
 [Service]
 Type=simple
 ExecStartPre=/bin/sleep 2
-ExecStart=/bin/bash -c 'export ZELLIJ_SESSION_NAME=main; exec /root/free-code-star-office-zellij-lab/scripts/zellij-session-monitor.sh'
+ExecStart=/bin/bash -c 'export ZELLIJ_SESSION_NAME=main HOME=/root XDG_RUNTIME_DIR=/run/user/0; exec /root/free-code-star-office-zellij-lab/scripts/zellij-session-monitor.sh'
 WorkingDirectory=/root/free-code-star-office-zellij-lab
 Environment=BRIDGE_URL=http://127.0.0.1:4317
 Environment=ZELLIJ_SESSION_NAME=main
