@@ -1112,7 +1112,7 @@ setInterval(()=>{fetch("/status").then(r=>r.json()).then(d=>{
     if (request.method === "GET" && url.pathname === "/help") {
       return json({
         ok: true,
-        version: "0.20.0",
+        version: "0.21.0",
         routes: ROUTE_TABLE,
       });
     }
@@ -1120,7 +1120,7 @@ setInterval(()=>{fetch("/status").then(r=>r.json()).then(d=>{
     if (request.method === "GET" && url.pathname === "/version") {
       return json({
         ok: true,
-        version: "0.20.0",
+        version: "0.21.0",
         runtime: `bun ${Bun.version}`,
         arch: process.arch,
         platform: process.platform,
@@ -1284,11 +1284,17 @@ setInterval(()=>{fetch("/status").then(r=>r.json()).then(d=>{
           sseClientConnected: metrics.sseClientConnected,
           sseClientDisconnected: metrics.sseClientDisconnected,
           sseClientEvicted: metrics.sseClientEvicted,
+          sseReplayRequests: metrics.sseReplayRequests,
+          sseReplaySuccesses: metrics.sseReplaySuccesses,
+          sseReplayGaps: metrics.sseReplayGaps,
           signalsProcessed: metrics.signalsProcessed,
           signalsDuplicate: metrics.signalsDuplicate,
+          signalsSuppressed: metrics.signalsSuppressed,
           actionsExecuted: metrics.actionsExecuted,
+          alertsReceived: metrics.alertsReceived,
           tokenRefreshes: metrics.tokenRefreshes,
           tokenRevocations: metrics.tokenRevocations,
+          rateLimitRejections: metrics.rateLimitRejections,
           wsConnections: metrics.wsConnections,
           wsDisconnects: metrics.wsDisconnects,
           wsMessages: metrics.wsMessages,
@@ -1371,14 +1377,82 @@ setInterval(()=>{fetch("/status").then(r=>r.json()).then(d=>{
       });
     }
 
+    if (request.method === "GET" && url.pathname === "/events/log/tail") {
+      // Efficient tail of the events log: reads only the last N lines
+      // by scanning backwards from EOF. No full-file read needed.
+      const limit = Math.min(Number(url.searchParams.get("limit") || 50), 200);
+      try {
+        const { open } = await import("node:fs/promises");
+        const fileHandle = await open(config.eventsLogPath);
+        const fileStat = await fileHandle.stat();
+        const fileSize = fileStat.size;
+        if (fileSize === 0) {
+          await fileHandle.close();
+          return json({ ok: true, count: 0, entries: [] });
+        }
+        // Read last chunk: estimate ~1KB per NDJSON line, read generous buffer
+        const readSize = Math.min(fileSize, limit * 2048 + 4096);
+        const offset = Math.max(0, fileSize - readSize);
+        const { createReadStream } = await import("node:fs");
+        const { createInterface } = await import("node:readline");
+        const entries: Record<string, unknown>[] = [];
+        const stream = createReadStream(config.eventsLogPath, { start: offset, encoding: "utf8" });
+        const rl = createInterface({ input: stream, crlfDelay: Infinity });
+        let lineCount = 0;
+        for await (const line of rl) {
+          if (!line.trim()) continue;
+          lineCount++;
+          // If we started mid-file, skip partial first line
+          if (offset > 0 && lineCount === 1 && !line.startsWith("{")) continue;
+          try {
+            const entry = JSON.parse(line);
+            entries.push(entry);
+          } catch { /* skip malformed */ }
+        }
+        // Take only the last N entries
+        const tailEntries = entries.slice(-limit);
+        return json({
+          ok: true,
+          count: tailEntries.length,
+          fileSize,
+          entries: tailEntries,
+        });
+      } catch {
+        return json({ ok: true, count: 0, entries: [] });
+      }
+    }
+
     if (request.method === "GET" && url.pathname === "/events/log") {
       const limit = Math.min(Number(url.searchParams.get("limit") || 50), 200);
       const afterSeq = url.searchParams.get("after_seq") ? Number(url.searchParams.get("after_seq")) : undefined;
       const sourceFilter = url.searchParams.get("source") || undefined;
       const eventTypeFilter = url.searchParams.get("event_type") || undefined;
+
+      // Fast path: no filters, no after_seq → use efficient tail read
+      if (!afterSeq && !sourceFilter && !eventTypeFilter) {
+        try {
+          const { createReadStream } = await import("node:fs");
+          const { createInterface } = await import("node:readline");
+          const entries: Record<string, unknown>[] = [];
+          const stream = createReadStream(config.eventsLogPath, { encoding: "utf8" });
+          const rl = createInterface({ input: stream, crlfDelay: Infinity });
+          for await (const line of rl) {
+            if (!line.trim()) continue;
+            try { entries.push(JSON.parse(line)); } catch { /* skip malformed */ }
+          }
+          return json({
+            ok: true,
+            count: entries.length,
+            entries: entries.slice(-limit),
+          });
+        } catch {
+          return json({ ok: true, count: 0, entries: [] });
+        }
+      }
+
+      // Slow path: filters or after_seq require full read + rotated files
       try {
         const { readFile } = await import("node:fs/promises");
-        // Read current + rotated files for comprehensive catch-up
         const filesToRead = [config.eventsLogPath];
         for (let i = 1; i <= EVENTS_LOG_KEEP_ROTATED; i++) {
           try {
@@ -1397,13 +1471,11 @@ setInterval(()=>{fetch("/status").then(r=>r.json()).then(d=>{
             }
           } catch { /* file not found */ }
         }
-        // Sort by sseEventSeq if available
         allEntries.sort((a, b) => {
           const seqA = (a.sseEventSeq as number) ?? 0;
           const seqB = (b.sseEventSeq as number) ?? 0;
           return seqA - seqB;
         });
-        // Apply after_seq filter for catch-up queries
         if (afterSeq !== undefined && !isNaN(afterSeq)) {
           allEntries = allEntries.filter((e) => {
             const seq = e.sseEventSeq as number | null;
@@ -1832,7 +1904,7 @@ setInterval(()=>{fetch("/status").then(r=>r.json()).then(d=>{
       } catch {}
       return json({
         ok: true,
-        version: "0.20.0",
+        version: "0.21.0",
         runtime: `bun ${Bun.version}`,
         arch: process.arch,
         platform: process.platform,
@@ -2032,6 +2104,7 @@ const ROUTE_TABLE: { method: string; path: string; description: string; auth: bo
   { method: "GET", path: "/events", description: "SSE stream for real-time subscription", auth: false },
   { method: "GET", path: "/events/recent", description: "Recent event log (sequential IDs)", auth: false },
   { method: "GET", path: "/events/log", description: "Persistent event history (supports after_seq for catch-up, reads rotated logs)", auth: false },
+  { method: "GET", path: "/events/log/tail", description: "Efficient tail of events log (no full-file read, last N lines)", auth: false },
   { method: "GET", path: "/events/test", description: "HTML SSE test page", auth: false },
   { method: "POST", path: "/event/manual", description: "Submit manual events", auth: true },
   { method: "POST", path: "/alert", description: "Alertmanager webhook (broadcasts alerts as SSE events)", auth: false },
