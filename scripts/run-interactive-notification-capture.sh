@@ -14,6 +14,8 @@ PERMISSION_MODE="${PERMISSION_MODE:-default}"
 ZELLIJ_WEB_URL="${ZELLIJ_WEB_URL:-https://term.karldigi.dev/main}"
 ZELLIJ_SESSION_NAME="${ZELLIJ_SESSION_NAME:-}"
 ZELLIJ_WEB_TOKEN="${ZELLIJ_WEB_TOKEN:-}"
+CAPTURE_BATCH="${CAPTURE_BATCH:-safe-lifecycle}"
+ALLOW_RISKY_CAPTURE="${ALLOW_RISKY_CAPTURE:-false}"
 BRIDGE_URL="http://${BRIDGE_HOST}:${BRIDGE_PORT}"
 EVENTS_LOG="${REPO_ROOT}/tmp/events.ndjson"
 BRIDGE_LOG="${REPO_ROOT}/tmp/live-bridge.log"
@@ -48,11 +50,128 @@ Environment overrides:
   ZELLIJ_WEB_URL       Default: https://term.karldigi.dev/main
   ZELLIJ_SESSION_NAME  Optional expected session name in sg01 Zellij web
   ZELLIJ_WEB_TOKEN     Optional operator token; only set/unset status is printed
+  CAPTURE_BATCH        Default: safe-lifecycle; use --list-batches for options
+  ALLOW_RISKY_CAPTURE  Default: false; required for risky trigger guidance
 EOF
+}
+
+list_batches() {
+  cat <<EOF
+Capture batches:
+  safe-lifecycle
+    Low-risk default. Targets PermissionRequest, Notification, SubagentStart,
+    SubagentStop, TaskCreated, TaskCompleted, and TeammateIdle via an
+    interactive team/worker flow.
+
+  config-file-watch
+    Low-risk operator batch. Targets Setup, CwdChanged, FileChanged,
+    InstructionsLoaded, and ConfigChange. Requires a matching FileChanged hook.
+
+  worktree
+    Medium-risk local isolation batch. Targets WorktreeCreate and WorktreeRemove.
+    Use only when temporary worktrees are acceptable.
+
+  compaction
+    Medium-risk session-management batch. Targets PreCompact and PostCompact.
+    Use only when compaction is acceptable for the current session.
+
+  risky-denial
+    Risky batch. Targets PermissionDenied and StopFailure. Requires
+    ALLOW_RISKY_CAPTURE=true and explicit operator judgment. Prefer documenting
+    these as deferred instead of forcing dangerous or context-overflow triggers.
+EOF
+}
+
+print_batch_guidance() {
+  case "${CAPTURE_BATCH}" in
+    safe-lifecycle)
+      cat <<EOF
+[interactive-capture] selected batch: safe-lifecycle
+[interactive-capture] target events:
+  - PermissionRequest
+  - Notification
+  - SubagentStart
+  - SubagentStop
+  - TaskCreated
+  - TaskCompleted
+  - TeammateIdle
+[interactive-capture] trigger guidance:
+  1. Create the team from the leader session.
+  2. Spawn one worker.
+  3. Have the worker run a harmless command that requires permission in default mode.
+  4. Approve or deny only after the event appears in the bridge log.
+EOF
+      ;;
+    config-file-watch)
+      cat <<EOF
+[interactive-capture] selected batch: config-file-watch
+[interactive-capture] target events:
+  - Setup
+  - CwdChanged
+  - FileChanged
+  - InstructionsLoaded
+  - ConfigChange
+[interactive-capture] trigger guidance:
+  1. Start a fresh session with the plugin enabled.
+  2. Change cwd through the runtime/operator flow.
+  3. Modify a non-secret scratch file covered by a FileChanged hook matcher.
+  4. Change a safe runtime setting if ConfigChange coverage is needed.
+EOF
+      ;;
+    worktree)
+      cat <<EOF
+[interactive-capture] selected batch: worktree
+[interactive-capture] target events:
+  - WorktreeCreate
+  - WorktreeRemove
+[interactive-capture] trigger guidance:
+  1. Start a temporary worktree through the runtime/operator flow.
+  2. Exit and remove it after confirming capture.
+  3. Do not use this batch if uncommitted work could be discarded.
+EOF
+      ;;
+    compaction)
+      cat <<EOF
+[interactive-capture] selected batch: compaction
+[interactive-capture] target events:
+  - PreCompact
+  - PostCompact
+[interactive-capture] trigger guidance:
+  1. Trigger manual compaction only when it is safe for the session.
+  2. Confirm both pre- and post-compaction events in tmp/events.ndjson.
+EOF
+      ;;
+    risky-denial)
+      if [[ "${ALLOW_RISKY_CAPTURE}" != "true" ]]; then
+        echo "risky-denial batch requires ALLOW_RISKY_CAPTURE=true" >&2
+        exit 1
+      fi
+      cat <<EOF
+[interactive-capture] selected batch: risky-denial
+[interactive-capture] target events:
+  - PermissionDenied
+  - StopFailure
+[interactive-capture] trigger guidance:
+  1. Do not run destructive commands just to capture these events.
+  2. Prefer a safe classifier-denied command or defer PermissionDenied.
+  3. Prefer deferring StopFailure instead of forcing context overflow.
+EOF
+      ;;
+    *)
+      echo "unknown CAPTURE_BATCH: ${CAPTURE_BATCH}" >&2
+      echo "run with --list-batches to see supported values" >&2
+      exit 1
+      ;;
+  esac
 }
 
 if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
   usage
+  exit 0
+fi
+
+if [[ "${1:-}" == "--list-batches" ]]; then
+  list_batches
   exit 0
 fi
 
@@ -201,8 +320,8 @@ echo "  1. Open the sg01 Zellij web URL above."
 echo "  2. Provide the Zellij web token in the browser/operator flow when prompted; do not paste it into this repo."
 echo "  3. Attach to the expected session if one is configured."
 echo "  4. Use the interactive leader session launched by this script."
-echo "  5. Create the team from the leader session, not from -p/--print mode."
-echo "  6. Trigger the worker permission probe: touch worker-permission-probe.txt."
+echo "  5. Follow the selected capture batch guidance below."
+print_batch_guidance
 echo "[interactive-capture] recommended leader prompt:"
 printf '%s\n' "${LEADER_PROMPT}"
 
