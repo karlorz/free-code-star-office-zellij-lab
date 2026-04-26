@@ -638,12 +638,16 @@ ${attachUrl ? `<a href="${attachUrl}" target="_blank">zellij web</a>` : ""}
 <button onclick="wsToggle()">${secret ? "WS connect" : "WS connect (no auth)"}</button>
 <button onclick="sendAction('list-tabs','--json')">list-tabs</button>
 <button onclick="sendAction('list-panes')">list-panes</button>
+<button onclick="tokenRefresh()" style="margin-left:auto">refresh token</button>
+<span id="tokenStatus" style="font-size:0.75rem;color:#aaa">token: ${config.zellijWebToken ? "set" : "none"}</span>
 </div>
 <div id="events"></div>
 <script>
 const el=document.getElementById("events");
 const st=document.getElementById("status");
 const wsBadge=document.getElementById("wsBadge");
+const tokenStatus=document.getElementById("tokenStatus");
+const secret="${secret}";
 let count=0,ws=null;
 const es=new EventSource("/events");
 function add(cls,text){
@@ -663,6 +667,8 @@ es.addEventListener("client_disconnected",e=>{const d=JSON.parse(e.data);add("cl
 es.addEventListener("backpressure",e=>{add("backpressure","BACKPRESSURE "+e.data)});
 es.addEventListener("shutdown",e=>{add("other","SHUTDOWN "+e.data)});
 es.addEventListener("action_executed",e=>{const d=JSON.parse(e.data);add("action","ACTION "+d.action+" exit="+d.exitCode)});
+es.addEventListener("web_token_refreshed",e=>{const d=JSON.parse(e.data);tokenStatus.textContent="token: "+(d.tokenName||"refreshed");add("other","TOKEN REFRESHED "+d.tokenName)});
+es.addEventListener("web_token_revoked",e=>{const d=JSON.parse(e.data);tokenStatus.textContent="token: revoked";add("other","TOKEN REVOKED "+(d.name||"all"))});
 es.onmessage=e=>{add("other",e.type+": "+e.data)};
 function wsToggle(){
   if(ws){ws.close();ws=null;return}
@@ -685,6 +691,21 @@ function wsToggle(){
 function sendAction(action,...args){
   if(!ws||ws.readyState!==1){add("other","WS not connected");return}
   ws.send(JSON.stringify({type:"action",action,args}));
+}
+async function tokenRefresh(){
+  if(!secret){add("other","no auth secret configured");return}
+  try{
+    const r=await fetch("/web/token/refresh",{headers:{"x-bridge-secret":secret}});
+    const d=await r.json();
+    if(d.ok){
+      tokenStatus.textContent="token: "+(d.tokenName||d.webToken?.slice(0,8)+"...");
+      add("other","TOKEN REFRESH ok name="+d.tokenName);
+      if(d.attachUrl){
+        const link=document.querySelector('a[href*="token="]');
+        if(link)link.href=d.attachUrl;
+      }
+    } else {add("other","TOKEN REFRESH failed: "+d.error)}
+  }catch(e){add("other","TOKEN REFRESH error: "+e)}
 }
 setInterval(()=>{if(ws&&ws.readyState===1)ws.send(JSON.stringify({type:"ping"}))},30000);
 </script></body></html>`, {
