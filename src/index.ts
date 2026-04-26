@@ -587,43 +587,97 @@ async function handleRequest(request: Request, url: URL): Promise<Response> {
     }
 
     if (request.method === "GET" && url.pathname === "/events/test") {
+      const secret = config.secret || "";
+      const webUrl = config.zellijWebUrl || "";
+      const webToken = config.zellijWebToken || "";
+      const sessionName = config.zellijSessionName || "";
+      let attachUrl = "";
+      if (webUrl && webToken) {
+        try {
+          const base = webUrl.replace(/\/$/, "");
+          attachUrl = sessionName
+            ? `${base.replace(/\/[^/]*$/, "")}/${sessionName}?token=${encodeURIComponent(webToken)}`
+            : `${base}?token=${encodeURIComponent(webToken)}`;
+        } catch {}
+      }
       return new Response(`<!DOCTYPE html>
-<html><head><title>Star Office Bridge — SSE Test</title>
+<html><head><title>Star Office Bridge — Dashboard</title>
 <style>
-body{font-family:monospace;margin:1rem;background:#1a1a2e;color:#e0e0e0}
-#status{color:#0f0;margin-bottom:1rem}
-#events{white-space:pre-wrap;font-size:0.85rem;max-height:80vh;overflow-y:auto}
-.evt{padding:2px 0;border-bottom:1px solid #333}
+body{font-family:monospace;margin:0;background:#1a1a2e;color:#e0e0e0;display:flex;flex-direction:column;height:100vh}
+.header{padding:0.5rem 1rem;background:#0f3460;display:flex;justify-content:space-between;align-items:center}
+.header h2{margin:0;font-size:1rem}
+#status{color:#0f0;font-size:0.85rem}
+.toolbar{display:flex;gap:0.5rem;padding:0.5rem 1rem;background:#16213e;align-items:center;flex-wrap:wrap}
+.toolbar a,.toolbar button{color:#e0e0e0;background:#1a1a2e;border:1px solid #333;padding:2px 8px;font-size:0.8rem;text-decoration:none;border-radius:3px;cursor:pointer;font-family:monospace}
+.toolbar a:hover,.toolbar button:hover{background:#0f3460}
+#events{flex:1;white-space:pre-wrap;font-size:0.8rem;overflow-y:auto;padding:0 1rem}
+.evt{padding:2px 0;border-bottom:1px solid #222}
 .evt-signal{color:#7ec8e3}.evt-snapshot{color:#f0c040}.evt-gap{color:#ff6b6b}
-.evt-client{color:#a0a0a0}.evt-backpressure{color:#ff4444}.evt-other{color:#c0c0c0}
-.ts{color:#666;margin-right:0.5rem}
+.evt-client{color:#a0a0a0}.evt-backpressure{color:#ff4444}.evt-action{color:#9cf}.evt-other{color:#c0c0c0}
+.ts{color:#555;margin-right:0.5rem}
+.ws-indicator{font-size:0.75rem;padding:1px 6px;border-radius:2px}
+.ws-on{background:#0a0;color:#000}.ws-off{background:#a00;color:#fff}
 </style></head><body>
-<h2>Star Office Bridge — SSE Test</h2>
-<div id="status">Connecting...</div>
+<div class="header"><h2>Star Office Bridge</h2><span id="status">Connecting...</span></div>
+<div class="toolbar">
+<a href="/health">health</a>
+<a href="/snapshot">snapshot</a>
+<a href="/stats">stats</a>
+<a href="/help">help</a>
+${attachUrl ? `<a href="${attachUrl}" target="_blank">zellij web</a>` : ""}
+<span class="ws-indicator ws-off" id="wsBadge">WS</span>
+<button onclick="wsToggle()">${secret ? "WS connect" : "WS connect (no auth)"}</button>
+<button onclick="sendAction('list-tabs','--json')">list-tabs</button>
+<button onclick="sendAction('list-panes')">list-panes</button>
+</div>
 <div id="events"></div>
 <script>
 const el=document.getElementById("events");
 const st=document.getElementById("status");
+const wsBadge=document.getElementById("wsBadge");
+let count=0,ws=null;
 const es=new EventSource("/events");
-let count=0;
 function add(cls,text){
   const d=document.createElement("div");
   d.className="evt evt-"+cls;
   d.innerHTML='<span class="ts">'+new Date().toLocaleTimeString()+'</span>'+text;
   el.prepend(d);
-  if(++count>200)d.lastChild&&d.remove();
+  if(++count>300){const last=el.lastChild;if(last)el.removeChild(last)}
 }
-es.onopen=()=>{st.textContent="Connected";st.style.color="#0f0"};
-es.onerror=()=>{st.textContent="Disconnected — reconnecting...";st.style.color="#f00"};
+es.onopen=()=>{st.textContent="SSE Connected";st.style.color="#0f0"};
+es.onerror=()=>{st.textContent="SSE Disconnected";st.style.color="#f00"};
 es.addEventListener("snapshot",e=>{add("snapshot","SNAPSHOT "+e.data)});
-es.addEventListener("signal",e=>{const d=JSON.parse(e.data);add("signal",d.state+" "+d.detail)});
+es.addEventListener("signal",e=>{const d=JSON.parse(e.data);add("signal","["+d.state+"] "+d.detail+" ("+d.eventName+")")});
 es.addEventListener("gap",e=>{const d=JSON.parse(e.data);add("gap","GAP "+d.gapSize+" events missed")});
 es.addEventListener("client_connected",e=>{const d=JSON.parse(e.data);add("client","CLIENT #"+d.clientId+" connected ("+d.totalClients+" total)")});
 es.addEventListener("client_disconnected",e=>{const d=JSON.parse(e.data);add("client","CLIENT #"+d.clientId+" disconnected ("+d.totalClients+" total)")});
 es.addEventListener("backpressure",e=>{add("backpressure","BACKPRESSURE "+e.data)});
 es.addEventListener("shutdown",e=>{add("other","SHUTDOWN "+e.data)});
-es.addEventListener("action_executed",e=>{const d=JSON.parse(e.data);add("signal","ACTION "+d.action+" exit="+d.exitCode)});
+es.addEventListener("action_executed",e=>{const d=JSON.parse(e.data);add("action","ACTION "+d.action+" exit="+d.exitCode)});
 es.onmessage=e=>{add("other",e.type+": "+e.data)};
+function wsToggle(){
+  if(ws){ws.close();ws=null;return}
+  const secret="${secret}";
+  const headers=secret?{"x-bridge-secret":secret}:{};
+  ws=new WebSocket((location.protocol==="https:"?"wss:":"ws:")+"//"+location.host+"/ws",Object.keys(headers).length?{headers}:undefined);
+  ws.onopen=()=>{wsBadge.className="ws-indicator ws-on";add("other","WS connected")};
+  ws.onclose=()=>{wsBadge.className="ws-indicator ws-off";add("other","WS disconnected")};
+  ws.onmessage=e=>{
+    const d=JSON.parse(e.data);
+    if(d.type==="action_result"){
+      const r=typeof d.result==="string"?d.result.slice(0,300):JSON.stringify(d.result)?.slice(0,300);
+      add("action","WS "+d.action+" ok="+d.ok+" "+r);
+    } else if(d.type==="snapshot"){add("snapshot","WS SNAPSHOT "+JSON.stringify(d.data)?.slice(0,200))}
+    else if(d.type==="pong"){add("other","WS pong")}
+    else{add("other","WS "+d.type+" "+JSON.stringify(d)?.slice(0,200))}
+  };
+  ws.onerror=()=>{add("other","WS error")};
+}
+function sendAction(action,...args){
+  if(!ws||ws.readyState!==1){add("other","WS not connected");return}
+  ws.send(JSON.stringify({type:"action",action,args}));
+}
+setInterval(()=>{if(ws&&ws.readyState===1)ws.send(JSON.stringify({type:"ping"}))},30000);
 </script></body></html>`, {
         status: 200,
         headers: { "content-type": "text/html; charset=utf-8", ...CORS_HEADERS },
