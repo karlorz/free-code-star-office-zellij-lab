@@ -331,7 +331,8 @@ function buildPrometheusMetrics(): string {
   // Build info metric — standard pattern for version identification from Prometheus queries
   lines.push(`# HELP bridge_info Bridge build information`);
   lines.push(`# TYPE bridge_info gauge`);
-  lines.push(`bridge_info{version="0.28.0",runtime="bun_${Bun.version}",arch="${process.arch}",platform="${process.platform}"} 1`);
+  const versionStr = "0.30.0";
+  lines.push(`bridge_info{version="${versionStr}",runtime="bun_${Bun.version}",arch="${process.arch}",platform="${process.platform}"} 1`);
   // SSE metrics
   lines.push(`# HELP bridge_sse_clients_current Current SSE client connections`);
   lines.push(`# TYPE bridge_sse_clients_current gauge`);
@@ -662,6 +663,7 @@ const logFlushInterval = setInterval(() => {
 
 // Scheduled log compaction: remove ignored entries every 6 hours
 const COMPACTION_INTERVAL_MS = 6 * 3600 * 1000;
+const COMPACTION_MAX_AGE_HOURS = 72; // Drop entries older than 72h during scheduled compaction
 const compactionInterval = setInterval(async () => {
   try {
     console.log("[bridge] scheduled log compaction starting");
@@ -670,22 +672,28 @@ const compactionInterval = setInterval(async () => {
     const lines = content.trim().split("\n").filter(Boolean);
     const retained: string[] = [];
     let removedIgnored = 0;
+    const cutoffMs = Date.now() - COMPACTION_MAX_AGE_HOURS * 3600 * 1000;
+    let removedExpired = 0;
     for (const line of lines) {
       try {
         const entry = JSON.parse(line);
         if (entry.ignored) { removedIgnored++; continue; }
+        if (entry.receivedAt && new Date(entry.receivedAt as string).getTime() < cutoffMs) {
+          removedExpired++;
+          continue;
+        }
         retained.push(line);
       } catch { retained.push(line); }
     }
-    if (removedIgnored > 0) {
+    if (removedIgnored > 0 || removedExpired > 0) {
       // Flush and close sink before overwriting the file
       await closeLogSink();
       const tmpPath = `${config.eventsLogPath}.compact.tmp`;
       await writeFile(tmpPath, retained.join("\n") + "\n", "utf8");
       await renameFile(tmpPath, config.eventsLogPath);
-      console.log(`[bridge] scheduled compaction: removed ${removedIgnored} ignored entries (${lines.length} → ${retained.length} lines)`);
+      console.log(`[bridge] scheduled compaction: removed ${removedIgnored} ignored, ${removedExpired} expired (>${COMPACTION_MAX_AGE_HOURS}h) (${lines.length} → ${retained.length} lines)`);
     } else {
-      console.log("[bridge] scheduled compaction: no ignored entries to remove");
+      console.log("[bridge] scheduled compaction: no ignored or expired entries to remove");
     }
   } catch (error) {
     console.warn("[bridge] scheduled compaction failed:", formatError(error));
@@ -1243,7 +1251,7 @@ setInterval(()=>{fetch("/status").then(r=>r.json()).then(d=>{
     if (request.method === "GET" && url.pathname === "/help") {
       return json({
         ok: true,
-        version: "0.29.0",
+        version: "0.30.0",
         routes: ROUTE_TABLE,
       });
     }
@@ -1251,7 +1259,7 @@ setInterval(()=>{fetch("/status").then(r=>r.json()).then(d=>{
     if (request.method === "GET" && url.pathname === "/version") {
       return json({
         ok: true,
-        version: "0.29.0",
+        version: "0.30.0",
         runtime: `bun ${Bun.version}`,
         arch: process.arch,
         platform: process.platform,
@@ -2193,7 +2201,7 @@ setInterval(()=>{fetch("/status").then(r=>r.json()).then(d=>{
       } catch {}
       return json({
         ok: true,
-        version: "0.29.0",
+        version: "0.30.0",
         runtime: `bun ${Bun.version}`,
         arch: process.arch,
         platform: process.platform,
