@@ -17,7 +17,7 @@ const SSE_MAX_BUFFERED_MESSAGES = 32; // Drop clients with more than this many b
 let sseEventSeq = 0;
 let sseClientSeq = 0;
 const sseClients = new Map<number, { controller: ReadableStreamDefaultController; buffered: number; connectedAt: number }>();
-const BRIDGE_VERSION = "0.44.0";
+const BRIDGE_VERSION = "0.45.0";
 
 // Shared environment for zellij CLI subprocess calls
 function zellijEnv(session?: string): Record<string, string | undefined> {
@@ -763,7 +763,7 @@ let isShuttingDown = false;
 async function gracefulShutdown(signal: string): Promise<void> {
   if (isShuttingDown) return;
   isShuttingDown = true;
-  console.log(`[bridge] received ${signal}, draining ${sseClients.size} SSE clients...`);
+  console.log(`[bridge] received ${signal}, draining ${sseClients.size} SSE clients, ${metrics.wsClientsCurrent} WS clients...`);
 
   // Stop accepting new connections — in-flight requests can still complete
   server.stop(false);
@@ -776,6 +776,12 @@ async function gracefulShutdown(signal: string): Promise<void> {
     } catch {}
   }
   sseClients.clear();
+
+  // Send close frames to WebSocket clients — Bun doesn't auto-send on exit
+  try {
+    server.publish("bridge-events", JSON.stringify({ type: "shutdown", reason: signal }));
+  } catch {}
+  // Note: Bun's server.stop() handles WebSocket connection cleanup internally
   clearInterval(keepAliveInterval);
   clearInterval(sweeperInterval);
   clearInterval(snapshotPushInterval);

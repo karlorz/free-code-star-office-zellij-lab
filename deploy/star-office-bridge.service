@@ -27,6 +27,9 @@ UMask=0077
 
 # Graceful shutdown: give 30s for server.stop() + SSE drain before SIGKILL
 TimeoutStopSec=30
+# KillMode=mixed: SIGTERM only to main PID, SIGKILL to remaining cgroup after timeout
+# Safer for Bun subprocess scenarios (zellij action, zstd, etc.)
+KillMode=mixed
 
 # High connection count for SSE clients
 LimitNOFILE=65535
