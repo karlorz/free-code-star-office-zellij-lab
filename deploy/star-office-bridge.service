@@ -23,11 +23,11 @@ SyslogIdentifier=bridge
 
 # === SECURITY HARDENING ===
 
-# Bridge does NOT access /tmp sockets directly (receives HTTP POSTs on localhost)
-PrivateTmp=yes
+# Bridge now proxies zellij action commands which need /tmp/zellij-0/ socket access
+# PrivateTmp=yes
 
-# ProtectHome: read-only -- may need to read /root for config
-ProtectHome=read-only
+# ProtectHome: DISABLED -- zellij action commands need write access to /root/.cache/zellij/
+# ProtectHome=read-only
 
 # ProtectSystem: full (read-only /usr, /boot, /etc, /var) — allows /tmp and /root writes
 # strict mode breaks zellij action commands which write to /root/.cache/zellij/
