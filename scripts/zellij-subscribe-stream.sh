@@ -93,17 +93,17 @@ while [[ "$_running" == "true" ]]; do
   if [[ -z "${SUBSCRIBE_PANE_IDS:-}" ]]; then
     PANE_IDS="$(ZELLIJ_SESSION_NAME="$SESSION_NAME" zellij action list-panes --json 2>/dev/null \
       | python3 -c '
-    import json, sys
-    try:
-      d = json.loads(sys.stdin.read())
-    except json.JSONDecodeError:
-      d = []
-    terminals = [p for p in d if not p.get("is_plugin")]
-    focused = [p for p in terminals if p.get("is_focused") and not p.get("is_floating")]
-    if not focused:
-      focused = terminals[:1]
-    print(",".join(str(p["id"]) for p in focused))
-    ' 2>/dev/null || true)"
+import json, sys
+try:
+  d = json.loads(sys.stdin.read())
+except json.JSONDecodeError:
+  d = []
+terminals = [p for p in d if not p.get("is_plugin")]
+focused = [p for p in terminals if p.get("is_focused") and not p.get("is_floating")]
+if not focused:
+  focused = terminals[:1]
+print(",".join(str(p["id"]) for p in focused))
+' 2>/dev/null || true)"
 
     PANE_ARGS=""
     for pid in $(echo "$PANE_IDS" | tr ',' ' '); do
