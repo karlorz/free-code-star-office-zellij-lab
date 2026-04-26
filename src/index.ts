@@ -164,6 +164,30 @@ const keepAliveInterval = setInterval(() => {
   }
 }, 15_000);
 
+let isShuttingDown = false;
+
+async function gracefulShutdown(signal: string): Promise<void> {
+  if (isShuttingDown) return;
+  isShuttingDown = true;
+  console.log(`[bridge] received ${signal}, draining ${sseClients.size} SSE clients...`);
+
+  const shutdownMessage = formatSSE({ shutdown: true, reason: signal }, "shutdown");
+  for (const controller of sseClients) {
+    try {
+      controller.enqueue(shutdownMessage);
+      controller.close();
+    } catch {}
+  }
+  sseClients.clear();
+  clearInterval(keepAliveInterval);
+
+  await Bun.sleep(1000);
+  process.exit(0);
+}
+
+process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
+process.on("SIGINT", () => gracefulShutdown("SIGINT"));
+
 const server = Bun.serve({
   hostname: config.host,
   port: config.port,
