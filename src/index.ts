@@ -375,6 +375,49 @@ async function handleRequest(request: Request, url: URL): Promise<Response> {
       return new Response("ok", { status: 200, headers: { "content-type": "text/plain", ...CORS_HEADERS } });
     }
 
+    if (request.method === "GET" && url.pathname === "/events/test") {
+      return new Response(`<!DOCTYPE html>
+<html><head><title>Star Office Bridge — SSE Test</title>
+<style>
+body{font-family:monospace;margin:1rem;background:#1a1a2e;color:#e0e0e0}
+#status{color:#0f0;margin-bottom:1rem}
+#events{white-space:pre-wrap;font-size:0.85rem;max-height:80vh;overflow-y:auto}
+.evt{padding:2px 0;border-bottom:1px solid #333}
+.evt-signal{color:#7ec8e3}.evt-snapshot{color:#f0c040}.evt-gap{color:#ff6b6b}
+.evt-client{color:#a0a0a0}.evt-backpressure{color:#ff4444}.evt-other{color:#c0c0c0}
+.ts{color:#666;margin-right:0.5rem}
+</style></head><body>
+<h2>Star Office Bridge — SSE Test</h2>
+<div id="status">Connecting...</div>
+<div id="events"></div>
+<script>
+const el=document.getElementById("events");
+const st=document.getElementById("status");
+const es=new EventSource("/events");
+let count=0;
+function add(cls,text){
+  const d=document.createElement("div");
+  d.className="evt evt-"+cls;
+  d.innerHTML='<span class="ts">'+new Date().toLocaleTimeString()+'</span>'+text;
+  el.prepend(d);
+  if(++count>200)d.lastChild&&d.remove();
+}
+es.onopen=()=>{st.textContent="Connected";st.style.color="#0f0"};
+es.onerror=()=>{st.textContent="Disconnected — reconnecting...";st.style.color="#f00"};
+es.addEventListener("snapshot",e=>{add("snapshot","SNAPSHOT "+e.data)});
+es.addEventListener("signal",e=>{const d=JSON.parse(e.data);add("signal",d.state+" "+d.detail)});
+es.addEventListener("gap",e=>{const d=JSON.parse(e.data);add("gap","GAP "+d.gapSize+" events missed")});
+es.addEventListener("client_connected",e=>{const d=JSON.parse(e.data);add("client","CLIENT #"+d.clientId+" connected ("+d.totalClients+" total)")});
+es.addEventListener("client_disconnected",e=>{const d=JSON.parse(e.data);add("client","CLIENT #"+d.clientId+" disconnected ("+d.totalClients+" total)")});
+es.addEventListener("backpressure",e=>{add("backpressure","BACKPRESSURE "+e.data)});
+es.addEventListener("shutdown",e=>{add("other","SHUTDOWN "+e.data)});
+es.onmessage=e=>{add("other",e.type+": "+e.data)};
+</script></body></html>`, {
+        status: 200,
+        headers: { "content-type": "text/html; charset=utf-8", ...CORS_HEADERS },
+      });
+    }
+
     if (request.method === "GET" && url.pathname === "/version") {
       return json({
         ok: true,
