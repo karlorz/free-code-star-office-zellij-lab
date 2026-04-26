@@ -124,6 +124,27 @@ else
   status "bridge listener :${BRIDGE_PORT}" "not running"
 fi
 
+if has_command curl; then
+  if bridge_health="$(curl -fsS "http://127.0.0.1:${BRIDGE_PORT}/health" 2>/dev/null)"; then
+    status "bridge health" "${bridge_health}"
+  else
+    status "bridge health" "unreachable"
+  fi
+else
+  status "bridge health" "curl missing"
+fi
+
+if has_command systemctl; then
+  if systemctl list-unit-files star-office-bridge.service >/dev/null 2>&1; then
+    status "bridge service" "$(systemctl is-active star-office-bridge.service 2>/dev/null || true)"
+    status "bridge service enabled" "$(systemctl is-enabled star-office-bridge.service 2>/dev/null || true)"
+  else
+    status "bridge service" "missing"
+  fi
+else
+  status "bridge service" "systemctl missing"
+fi
+
 if has_command claude; then
   CLAUDE_PRESENT="true"
   status "claude" "$(claude --version 2>/dev/null | head -n 1 || command -v claude)"
@@ -196,6 +217,21 @@ require_present "git"
 require_present "zellij listener :8082"
 require_present "plugin hooks"
 require_present "interactive helper"
+
+bridge_health_value="$(value_for "bridge health")"
+if [[ "${bridge_health_value}" == unreachable* || "${bridge_health_value}" == "curl missing" || -z "${bridge_health_value}" ]]; then
+  blockers+=("bridge health: ${bridge_health_value:-unreachable}")
+fi
+
+bridge_service_value="$(value_for "bridge service")"
+if [[ "${bridge_service_value}" != "active" ]]; then
+  blockers+=("bridge service: ${bridge_service_value:-missing}")
+fi
+
+bridge_service_enabled_value="$(value_for "bridge service enabled")"
+if [[ "${bridge_service_enabled_value}" != "enabled" ]]; then
+  warnings+=("bridge service enabled: ${bridge_service_enabled_value:-unknown}")
+fi
 
 claude_value="$(value_for "claude")"
 free_code_value="$(value_for "free-code")"
