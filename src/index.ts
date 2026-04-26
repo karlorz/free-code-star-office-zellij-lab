@@ -873,11 +873,12 @@ body{font-family:monospace;margin:0;background:#1a1a2e;color:#e0e0e0;display:fle
 .ws-indicator{font-size:0.75rem;padding:1px 6px;border-radius:2px}
 .ws-on{background:#0a0;color:#000}.ws-off{background:#a00;color:#fff}
 </style></head><body>
-<div class="header"><h2>Star Office Bridge</h2><span id="status">Connecting...</span></div>
+<div class="header"><h2>Star Office Bridge</h2><span id="status">Connecting...</span><span id="caddyHealth" style="font-size:0.75rem;color:#aaa;margin-left:1rem"></span></div>
 <div class="toolbar">
 <a href="/health">health</a>
 <a href="/snapshot">snapshot</a>
 <a href="/stats">stats</a>
+<a href="/metrics/combined" target="_blank">metrics</a>
 <a href="/help">help</a>
 <a href="/web/tokens">tokens</a>
 ${attachUrl ? `<a href="${attachUrl}" target="_blank">zellij web</a>` : ""}
@@ -892,6 +893,7 @@ ${attachUrl ? `<a href="${attachUrl}" target="_blank">zellij web</a>` : ""}
 <script>
 const el=document.getElementById("events");
 const st=document.getElementById("status");
+const caddyEl=document.getElementById("caddyHealth");
 const wsBadge=document.getElementById("wsBadge");
 const tokenStatus=document.getElementById("tokenStatus");
 const secret="${secret}";
@@ -957,6 +959,13 @@ async function tokenRefresh(){
   }catch(e){add("other","TOKEN REFRESH error: "+e)}
 }
 setInterval(()=>{if(ws&&ws.readyState===1)ws.send(JSON.stringify({type:"ping"}))},30000);
+// Fetch and display Caddy upstream health
+fetch("/status").then(r=>r.json()).then(d=>{
+  if(d.caddy){caddyEl.textContent="caddy: "+d.caddy.upstreamsHealthy+"/"+d.caddy.upstreamsTotal+" upstreams healthy";caddyEl.style.color=d.caddy.healthy?"#0f0":"#f00";}
+}).catch(()=>{caddyEl.textContent="caddy: unreachable";caddyEl.style.color="#f00";});
+setInterval(()=>{fetch("/status").then(r=>r.json()).then(d=>{
+  if(d.caddy){caddyEl.textContent="caddy: "+d.caddy.upstreamsHealthy+"/"+d.caddy.upstreamsTotal+" healthy";caddyEl.style.color=d.caddy.healthy?"#0f0":"#f00";}
+}).catch(()=>{})},30000);
 </script></body></html>`, {
         status: 200,
         headers: { "content-type": "text/html; charset=utf-8", ...CORS_HEADERS },
