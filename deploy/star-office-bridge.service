@@ -12,6 +12,8 @@ Environment=BRIDGE_DRY_RUN=true
 Environment=ZELLIJ_WEB_URL=https://term.karldigi.dev/main
 Environment=ZELLIJ_SESSION_NAME=main
 Environment=PATH=/root/.bun/bin:/usr/local/bin:/usr/bin:/bin
+# Secrets loaded from local env file (not tracked in git)
+EnvironmentFile=-/etc/star-office-bridge.env
 
 # Restart policy
 Restart=on-failure
