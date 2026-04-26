@@ -1,0 +1,47 @@
+# Star Office Bridge Caddy Configuration
+# Reverse proxy with active health checks, SSE/WebSocket support
+# Install: symlink to /etc/caddy/Caddyfile or include from main Caddyfile
+
+{
+	# Global server timeouts — raised for long-lived SSE/WS connections
+	servers {
+		timeouts {
+			read_body 10s
+			read_header 10s
+			write 30s
+			idle 5m
+		}
+	}
+}
+
+# SSE + API endpoints
+:4431 {
+	encode gzip
+
+	# Exclude SSE from gzip — compression delays event delivery
+	@sse path /events /events/*
+	encode @sse off
+
+	reverse_proxy 127.0.0.1:4317 {
+		# Active health check via /readyz
+		health_uri     /readyz
+		health_interval 10s
+		health_timeout  5s
+		health_status   200
+
+		# SSE: flush immediately (no buffering), long stream lifetime
+		# WebSocket upgrade is automatic in Caddy v2
+		flush_interval -1
+		stream_timeout 24h
+
+		# Transport: keep-alive must be <= bridge's idle timeout
+		transport http {
+			keepalive 30s
+		}
+	}
+
+	log {
+		output stderr
+		format console
+	}
+}

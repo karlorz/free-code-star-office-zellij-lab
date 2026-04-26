@@ -17,7 +17,7 @@ const SSE_MAX_BUFFERED_MESSAGES = 32; // Drop clients with more than this many b
 let sseEventSeq = 0;
 let sseClientSeq = 0;
 const sseClients = new Map<number, { controller: ReadableStreamDefaultController; buffered: number; connectedAt: number }>();
-const BRIDGE_VERSION = "0.56.0";
+const BRIDGE_VERSION = "0.57.0";
 
 // Shared environment for zellij CLI subprocess calls
 function zellijEnv(session?: string): Record<string, string | undefined> {
@@ -1425,10 +1425,13 @@ async function handleRequest(request: Request, url: URL): Promise<Response> {
     if (request.method === "GET" && url.pathname === "/readyz") {
       // Readiness probe: 503 during graceful shutdown or if zellij session is down
       // Load balancers and Caddy should use this (not /healthz) to route traffic
+      // Startup grace: don't report zellij unhealthy until bridge has been up 30s+
+      // (avoids false 503 during initial health check cycle)
       if (isShuttingDown) {
         return new Response("shutting down", { status: 503, headers: { "content-type": "text/plain", ...CORS_HEADERS } });
       }
-      if (metrics.zellijSessionHealthy === 0) {
+      const startupGraceExpired = process.uptime() > 30;
+      if (startupGraceExpired && metrics.zellijSessionHealthy === 0) {
         return new Response("zellij session unhealthy", { status: 503, headers: { "content-type": "text/plain", ...CORS_HEADERS } });
       }
       return new Response("ok", { status: 200, headers: { "content-type": "text/plain", ...CORS_HEADERS } });
@@ -2837,7 +2840,7 @@ const ROUTE_TABLE: { method: string; path: string; description: string; auth: bo
   { method: "POST", path: "/alert", description: "Alertmanager webhook (broadcasts alerts as SSE events)", auth: false },
   { method: "GET", path: "/health", description: "Bridge health check (JSON)", auth: false },
   { method: "GET", path: "/healthz", description: "Lightweight liveness probe (plain ok)", auth: false },
-  { method: "GET", path: "/readyz", description: "Readiness probe (503 during shutdown)", auth: false },
+  { method: "GET", path: "/readyz", description: "Readiness probe (503 during shutdown or zellij down, 30s startup grace)", auth: false },
   { method: "GET", path: "/action", description: "List allowed Zellij actions", auth: false },
   { method: "POST", path: "/action", description: "Execute Zellij CLI action (whitelisted)", auth: true },
   { method: "POST", path: "/action/batch", description: "Execute multiple Zellij actions sequentially (max 20)", auth: true },
