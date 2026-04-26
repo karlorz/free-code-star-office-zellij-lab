@@ -17,19 +17,19 @@ rustup target add wasm32-wasip1
 cargo build --target wasm32-wasip1 --release
 ```
 
-Output: `target/wasm32-wasip1/release/zellij_session_bridge.wasm`
+Output: `target/wasm32-wasip1/release/zellij-session-bridge.wasm`
 
 ## Load
 
 ```bash
 # As a floating headless pane
-zellij plugin -f -- file:target/wasm32-wasip1/release/zellij_session_bridge.wasm
+zellij plugin -f -- file:target/wasm32-wasip1/release/zellij-session-bridge.wasm
 
 # As an in-place hidden pane
-zellij plugin -i -- file:target/wasm32-wasip1/release/zellij_session_bridge.wasm
+zellij plugin -i -- file:target/wasm32-wasip1/release/zellij-session-bridge.wasm
 
 # Auto-launch via pipe (plugin loads on first message)
-zellij pipe --plugin file:/path/to/zellij_session_bridge.wasm --name push_state -- "init"
+zellij pipe --plugin file:/path/to/zellij-session-bridge.wasm --name push_state -- "init"
 
 # Manual state push after loaded
 zellij pipe --name push_state -- "manual"
