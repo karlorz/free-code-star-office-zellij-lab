@@ -1,4 +1,4 @@
-import { mkdir, appendFile, readFile, stat, unlink } from "node:fs/promises";
+import { mkdir, readFile, stat, unlink } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { loadConfig, timingSafeCompare } from "./config";
 import { SessionRegistry } from "./sessionRegistry";
@@ -160,6 +160,29 @@ function formatError(error: unknown): BridgeErrorInfo {
 const EVENTS_LOG_MAX_BYTES = 10 * 1024 * 1024; // 10MB max for events.ndjson
 const EVENTS_LOG_KEEP_ROTATED = 2; // Keep N rotated files for longer catch-up windows
 
+// Bun FileSink for high-performance log writes — eliminates per-write open/close syscalls
+let _logSink: ReturnType<typeof Bun.file> extends { writer(...args: any[]): infer W } ? W : never;
+let _logSinkPath = "";
+
+function getLogSink() {
+  // Re-create sink if path changed (after rotation renames the file away)
+  if (!_logSink || _logSinkPath !== config.eventsLogPath) {
+    _logSinkPath = config.eventsLogPath;
+    _logSink = Bun.file(config.eventsLogPath).writer();
+  }
+  return _logSink;
+}
+
+async function flushLogSink() {
+  try { _logSink?.flush(); } catch { /* sink may be closed after rotation */ }
+}
+
+async function closeLogSink() {
+  try { _logSink?.end(); } catch { /* already closed */ }
+  _logSink = undefined as any;
+  _logSinkPath = "";
+}
+
 async function appendEvent(entry: BridgeEventLogEntry): Promise<void> {
   try {
     await mkdir(dirname(config.eventsLogPath), { recursive: true });
@@ -168,6 +191,8 @@ async function appendEvent(entry: BridgeEventLogEntry): Promise<void> {
       const fileStat = await stat(config.eventsLogPath);
       if (fileStat.size > EVENTS_LOG_MAX_BYTES) {
         console.log(`[bridge] rotating events log (${(fileStat.size / 1024 / 1024).toFixed(1)}MB exceeds ${EVENTS_LOG_MAX_BYTES / 1024 / 1024}MB limit)`);
+        // Flush and close sink before rotation (file must be closed for rename)
+        await closeLogSink();
         const { rename: renameFile } = await import("node:fs/promises");
         // Remove oldest rotated file
         for (let i = EVENTS_LOG_KEEP_ROTATED; i >= 1; i--) {
@@ -188,7 +213,8 @@ async function appendEvent(entry: BridgeEventLogEntry): Promise<void> {
     } catch {
       // File doesn't exist yet — no rotation needed
     }
-    await appendFile(config.eventsLogPath, `${JSON.stringify(entry)}\n`, "utf8");
+    const sink = getLogSink();
+    sink.write(`${JSON.stringify(entry)}\n`);
   } catch (error) {
     console.warn("[bridge] failed to append event", formatError(error));
   }
@@ -580,6 +606,43 @@ const sweeperInterval = setInterval(() => {
   }
 }, 60_000);
 
+// Periodic log sink flush — FileSink buffers writes; flush every 5s for durability
+const logFlushInterval = setInterval(() => {
+  flushLogSink().catch(() => {});
+}, 5_000);
+
+// Scheduled log compaction: remove ignored entries every 6 hours
+const COMPACTION_INTERVAL_MS = 6 * 3600 * 1000;
+const compactionInterval = setInterval(async () => {
+  try {
+    console.log("[bridge] scheduled log compaction starting");
+    const { readFile, writeFile, rename: renameFile } = await import("node:fs/promises");
+    const content = await readFile(config.eventsLogPath, "utf8");
+    const lines = content.trim().split("\n").filter(Boolean);
+    const retained: string[] = [];
+    let removedIgnored = 0;
+    for (const line of lines) {
+      try {
+        const entry = JSON.parse(line);
+        if (entry.ignored) { removedIgnored++; continue; }
+        retained.push(line);
+      } catch { retained.push(line); }
+    }
+    if (removedIgnored > 0) {
+      // Flush and close sink before overwriting the file
+      await closeLogSink();
+      const tmpPath = `${config.eventsLogPath}.compact.tmp`;
+      await writeFile(tmpPath, retained.join("\n") + "\n", "utf8");
+      await renameFile(tmpPath, config.eventsLogPath);
+      console.log(`[bridge] scheduled compaction: removed ${removedIgnored} ignored entries (${lines.length} → ${retained.length} lines)`);
+    } else {
+      console.log("[bridge] scheduled compaction: no ignored entries to remove");
+    }
+  } catch (error) {
+    console.warn("[bridge] scheduled compaction failed:", formatError(error));
+  }
+}, COMPACTION_INTERVAL_MS);
+
 // Periodic snapshot push: broadcasts current session state to all SSE clients
 // every 60s for proactive drift correction. Long-lived connections may miss
 // events due to network blips; this ensures they self-correct without reconnect.
@@ -611,9 +674,15 @@ async function gracefulShutdown(signal: string): Promise<void> {
   clearInterval(keepAliveInterval);
   clearInterval(sweeperInterval);
   clearInterval(snapshotPushInterval);
+  clearInterval(logFlushInterval);
+  clearInterval(compactionInterval);
 
   // Drain window for in-flight requests
   await Bun.sleep(2000);
+
+  // Flush and close log sink before persisting metrics
+  await flushLogSink();
+  await closeLogSink();
 
   // Persist final metrics snapshot before exit
   try {
@@ -1112,7 +1181,7 @@ setInterval(()=>{fetch("/status").then(r=>r.json()).then(d=>{
     if (request.method === "GET" && url.pathname === "/help") {
       return json({
         ok: true,
-        version: "0.22.0",
+        version: "0.23.0",
         routes: ROUTE_TABLE,
       });
     }
@@ -1120,7 +1189,7 @@ setInterval(()=>{fetch("/status").then(r=>r.json()).then(d=>{
     if (request.method === "GET" && url.pathname === "/version") {
       return json({
         ok: true,
-        version: "0.22.0",
+        version: "0.23.0",
         runtime: `bun ${Bun.version}`,
         arch: process.arch,
         platform: process.platform,
@@ -2022,7 +2091,7 @@ setInterval(()=>{fetch("/status").then(r=>r.json()).then(d=>{
       } catch {}
       return json({
         ok: true,
-        version: "0.22.0",
+        version: "0.23.0",
         runtime: `bun ${Bun.version}`,
         arch: process.arch,
         platform: process.platform,
