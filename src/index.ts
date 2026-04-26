@@ -17,7 +17,7 @@ const SSE_MAX_BUFFERED_MESSAGES = 32; // Drop clients with more than this many b
 let sseEventSeq = 0;
 let sseClientSeq = 0;
 const sseClients = new Map<number, { controller: ReadableStreamDefaultController; buffered: number; connectedAt: number }>();
-const BRIDGE_VERSION = "0.49.0";
+const BRIDGE_VERSION = "0.50.0";
 
 // Shared environment for zellij CLI subprocess calls
 function zellijEnv(session?: string): Record<string, string | undefined> {
@@ -78,6 +78,9 @@ const metrics = {
   gcTriggers: 0,
   zellijSessionHealthy: 1,  // gauge: 1=healthy, 0=unhealthy
   zellijHealthConsecutiveFailures: 0,
+  zellijRecoveryAttempts: 0,
+  zellijRecoverySuccesses: 0,
+  wsClientTimeouts: 0,      // zombie connections cleaned up by heartbeat
   startTime: Date.now(),
 };
 
@@ -507,6 +510,15 @@ function buildPrometheusMetrics(): string {
   lines.push(`# HELP bridge_zellij_session_healthy Whether the zellij session server is responsive via IPC (1=healthy, 0=unhealthy)`);
   lines.push(`# TYPE bridge_zellij_session_healthy gauge`);
   lines.push(`bridge_zellij_session_healthy ${metrics.zellijSessionHealthy}`);
+  lines.push(`# HELP bridge_zellij_recovery_attempts_total Total zellij session auto-recovery attempts`);
+  lines.push(`# TYPE bridge_zellij_recovery_attempts_total counter`);
+  lines.push(`bridge_zellij_recovery_attempts_total ${metrics.zellijRecoveryAttempts}`);
+  lines.push(`# HELP bridge_zellij_recovery_successes_total Total successful zellij session recoveries`);
+  lines.push(`# TYPE bridge_zellij_recovery_successes_total counter`);
+  lines.push(`bridge_zellij_recovery_successes_total ${metrics.zellijRecoverySuccesses}`);
+  lines.push(`# HELP bridge_ws_client_timeouts_total WebSocket connections closed by heartbeat zombie detection`);
+  lines.push(`# TYPE bridge_ws_client_timeouts_total counter`);
+  lines.push(`bridge_ws_client_timeouts_total ${metrics.wsClientTimeouts}`);
   // Heap object count from cached heapStats (JSC engine)
   const heapObjCount = cachedHeapStats?.objectCount as number | undefined;
   if (heapObjCount !== undefined) {
@@ -784,6 +796,7 @@ async function attemptZellijRecovery(session: string): Promise<boolean> {
   }
 
   console.log(`[bridge] attempting zellij session recovery for "${session}"...`);
+  metrics.zellijRecoveryAttempts++;
   try {
     const proc = Bun.spawn({
       cmd: ["zellij", "attach", "-c", session],
@@ -804,6 +817,7 @@ async function attemptZellijRecovery(session: string): Promise<boolean> {
       try {
         await ipcPing(session);
         console.log(`[bridge] zellij session "${session}" recovered successfully`);
+        metrics.zellijRecoverySuccesses++;
         return true;
       } catch {
         await Bun.sleep(2000);
@@ -859,6 +873,32 @@ const zellijSaveInterval = setInterval(async () => {
   }
 }, 60_000);
 
+// WebSocket client state for heartbeat zombie detection
+const wsClientState = new Map<any, { lastActivity: number; pingSent: boolean }>();
+
+// WebSocket heartbeat: detect zombie connections that silently dropped TCP.
+// Bun's idleTimeout=0 + sendPings=false (workaround for #26554) means the server
+// never probes client liveness. This interval sends app-level pings to idle WS
+// clients and closes those that haven't responded within 60s of the first ping.
+const wsHeartbeatInterval = setInterval(() => {
+  if (isShuttingDown) return;
+  const now = Date.now();
+  for (const [ws, state] of wsClientState) {
+    const idleMs = now - state.lastActivity;
+    if (idleMs > 90_000) {
+      // No activity for 90s — close as zombie
+      console.warn(`[bridge] closing zombie WS client (idle ${Math.round(idleMs / 1000)}s, pingSent=${state.pingSent})`);
+      ws.close(4001, "heartbeat timeout");
+      wsClientState.delete(ws);
+      metrics.wsClientTimeouts++;
+    } else if (idleMs > 45_000 && !state.pingSent) {
+      // Idle for 45s — send application ping
+      try { ws.send(JSON.stringify({ type: "ping", ts: now })); } catch {}
+      state.pingSent = true;
+    }
+  }
+}, 30_000);
+
 let isShuttingDown = false;
 
 // Track background subprocesses for clean shutdown
@@ -894,6 +934,7 @@ async function gracefulShutdown(signal: string): Promise<void> {
   clearInterval(compactionInterval);
   clearInterval(zellijHealthInterval);
   clearInterval(zellijSaveInterval);
+  clearInterval(wsHeartbeatInterval);
 
   // Drain window for in-flight requests
   await Bun.sleep(2000);
@@ -1024,6 +1065,8 @@ const server = Bun.serve({
       console.log(`[bridge] ws client connected authed=${data.authenticated} session=${data.sessionId || "none"} total=${server.subscriberCount("bridge-events") + 1}`); // secret param intentionally omitted from log
       metrics.wsConnections++;
       metrics.wsClientsCurrent++;
+      // Track for heartbeat zombie detection
+      wsClientState.set(ws, { lastActivity: Date.now(), pingSent: false });
       // Subscribe to the event broadcast channel
       ws.subscribe("bridge-events");
       // Send initial snapshot with connection metadata
@@ -1033,6 +1076,9 @@ const server = Bun.serve({
     async message(ws, message) {
       const data = ws.data as unknown as { authenticated: boolean };
       metrics.wsMessages++;
+      // Update heartbeat activity tracker
+      const hbState = wsClientState.get(ws);
+      if (hbState) { hbState.lastActivity = Date.now(); hbState.pingSent = false; }
       const text = typeof message === "string" ? message : message.toString();
       // Reject oversized messages (prevent abuse)
       if (text.length > 65536) {
@@ -1128,6 +1174,7 @@ const server = Bun.serve({
       console.log(`[bridge] ws client disconnected code=${code} session=${data.sessionId || "none"} duration=${connDuration}s`);
       metrics.wsClientsCurrent--;
       metrics.wsDisconnects++;
+      wsClientState.delete(ws);
       ws.unsubscribe("bridge-events");
     },
     // drain handler: called when a previously-backpressured socket is ready to send again
@@ -1143,6 +1190,7 @@ const server = Bun.serve({
       const data = ws.data as unknown as { sessionId?: string };
       console.error(`[bridge] ws error session=${data.sessionId || "none"}: ${error instanceof Error ? error.message : String(error)}`);
       metrics.wsDisconnects++;
+      wsClientState.delete(ws);
       ws.unsubscribe("bridge-events");
     },
   },
@@ -1320,6 +1368,9 @@ async function handleRequest(request: Request, url: URL): Promise<Response> {
         memory: { rss: mem.rss, heapUsed: mem.heapUsed, heapTotal: mem.heapTotal },
         zellijSessionHealthy: metrics.zellijSessionHealthy === 1,
         zellijHealthFailures: metrics.zellijHealthConsecutiveFailures,
+        zellijRecoveryAttempts: metrics.zellijRecoveryAttempts,
+        zellijRecoverySuccesses: metrics.zellijRecoverySuccesses,
+        zellijLastRecoveryAttempt: zellijLastRecoveryAttempt || null,
         isShuttingDown,
       });
     }
@@ -1541,6 +1592,9 @@ setInterval(()=>{fetch("/status").then(r=>r.json()).then(d=>{
           sessions: registry.list().length,
           zellijSessionHealthy: metrics.zellijSessionHealthy === 1,
           zellijHealthFailures: metrics.zellijHealthConsecutiveFailures,
+          zellijRecoveryAttempts: metrics.zellijRecoveryAttempts,
+          zellijRecoverySuccesses: metrics.zellijRecoverySuccesses,
+          zellijLastRecoveryAttempt: zellijLastRecoveryAttempt || null,
           isShuttingDown,
         },
       };
