@@ -217,9 +217,32 @@ const server = Bun.serve({
         return json({ ok: false, error: "invalid json" }, { status: 400 });
       }
 
-      if (!body || typeof body.event_name !== "string" || body.event_name.trim() === "") {
+      if (!body || (typeof body.event_name !== "string" || body.event_name.trim() === "") && (typeof body.hook_event_name !== "string" || body.hook_event_name.trim() === "")) {
         await appendIgnoredEvent("claude-hook", "missing event_name", { rawEvent: body ?? null });
         return json({ ok: false, error: "missing event_name" }, { status: 400 });
+      }
+
+      // Normalize native HTTP hook format (hook_event_name at top level) into
+      // the bridge's existing event_name + payload envelope shape.
+      const eventName = body.event_name || body.hook_event_name || "unknown";
+      if (!body.event_name && body.hook_event_name) {
+        const { hook_event_name, session_id, cwd: bodyCwd, transcript_path, tool_name, tool_input, tool_response, tool_use_id, permission_mode, ...rest } = body;
+        body = {
+          source: "claude-hook",
+          event_name: hook_event_name!,
+          payload: {
+            session_id,
+            cwd: bodyCwd,
+            transcript_path,
+            tool_name,
+            tool_input,
+            tool_response,
+            tool_use_id,
+            permission_mode,
+            ...rest,
+          },
+          received_at: new Date().toISOString(),
+        };
       }
 
       const event = {

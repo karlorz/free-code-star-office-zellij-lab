@@ -806,7 +806,33 @@ if ignored_missing_name.get("signal") is not None or ignored_missing_name.get("o
     raise SystemExit("expected ignored entries to have null signal/originalSignal")
 PY
 
-echo "[26/31] SSE /events endpoint"
+echo "[26/31] native HTTP hook format (hook_event_name at top level)"
+native_hook_status="$(curl -sS -o /dev/null -w '%{http_code}' -X POST "${BRIDGE_URL}/hook/claude" \
+  -H "content-type: application/json" \
+  -d '{"hook_event_name":"PostToolUse","session_id":"smoke-native-hook","cwd":"/tmp","tool_name":"Bash","tool_input":{"command":"echo native"},"tool_use_id":"toolu_native_1","tool_response":{"exitCode":0}}')"
+if [[ "${native_hook_status}" != "200" ]]; then
+  echo "expected native HTTP hook status 200, got ${native_hook_status}" >&2
+  cat "${LOG_FILE}" >&2
+  exit 1
+fi
+
+# Verify the native hook event was normalized into event_name + payload shape
+NATIVE_HOOK_SESSIONS_JSON="$(curl -fsS "${BRIDGE_URL}/sessions")"
+NATIVE_HOOK_SESSIONS_JSON="${NATIVE_HOOK_SESSIONS_JSON}" python3 - <<'PY'
+import json, os
+payload = json.loads(os.environ["NATIVE_HOOK_SESSIONS_JSON"])
+session = next((s for s in payload.get("sessions", []) if s.get("sessionId") == "smoke-native-hook"), None)
+if not session:
+    raise SystemExit("missing smoke-native-hook session from native HTTP hook")
+main = session.get("main") or {}
+if main.get("state") != "executing":
+    raise SystemExit(f"expected native hook PostToolUse state=executing, got {main.get('state')!r}")
+context = main.get("context") or {}
+if context.get("rawToolName") != "Bash":
+    raise SystemExit(f"expected native hook context.rawToolName=Bash, got {context.get('rawToolName')!r}")
+PY
+
+echo "[27/31] SSE /events endpoint"
 SSE_OUTPUT="$(mktemp)"
 python3 -u - "${BRIDGE_URL}" <<'PY' >"${SSE_OUTPUT}" 2>&1 &
 import http.client

@@ -1,13 +1,17 @@
 {
-  "description": "Forward runtime hook events to the local Star Office bridge",
+  "description": "Forward runtime hook events to the local Star Office bridge via native HTTP hooks",
   "hooks": {
     "SessionStart": [
       {
         "hooks": [
           {
-            "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks-handlers/send-hook.sh SessionStart",
-            "timeout": 10
+            "type": "http",
+            "url": "${CLAUDE_STAR_BRIDGE_URL}/hook/claude",
+            "timeout": 10,
+            "headers": {
+              "X-Bridge-Secret": "${CLAUDE_STAR_BRIDGE_SECRET}"
+            },
+            "allowedEnvVars": ["CLAUDE_STAR_BRIDGE_URL", "CLAUDE_STAR_BRIDGE_SECRET"]
           }
         ]
       }
@@ -16,9 +20,13 @@
       {
         "hooks": [
           {
-            "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks-handlers/send-hook.sh PreToolUse",
-            "timeout": 10
+            "type": "http",
+            "url": "${CLAUDE_STAR_BRIDGE_URL}/hook/claude",
+            "timeout": 10,
+            "headers": {
+              "X-Bridge-Secret": "${CLAUDE_STAR_BRIDGE_SECRET}"
+            },
+            "allowedEnvVars": ["CLAUDE_STAR_BRIDGE_URL", "CLAUDE_STAR_BRIDGE_SECRET"]
           }
         ]
       }
@@ -27,9 +35,13 @@
       {
         "hooks": [
           {
-            "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks-handlers/send-hook.sh PostToolUse",
-            "timeout": 10
+            "type": "http",
+            "url": "${CLAUDE_STAR_BRIDGE_URL}/hook/claude",
+            "timeout": 10,
+            "headers": {
+              "X-Bridge-Secret": "${CLAUDE_STAR_BRIDGE_SECRET}"
+            },
+            "allowedEnvVars": ["CLAUDE_STAR_BRIDGE_URL", "CLAUDE_STAR_BRIDGE_SECRET"]
           }
         ]
       }
@@ -38,9 +50,13 @@
       {
         "hooks": [
           {
-            "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks-handlers/send-hook.sh PostToolUseFailure",
-            "timeout": 10
+            "type": "http",
+            "url": "${CLAUDE_STAR_BRIDGE_URL}/hook/claude",
+            "timeout": 10,
+            "headers": {
+              "X-Bridge-Secret": "${CLAUDE_STAR_BRIDGE_SECRET}"
+            },
+            "allowedEnvVars": ["CLAUDE_STAR_BRIDGE_URL", "CLAUDE_STAR_BRIDGE_SECRET"]
           }
         ]
       }
@@ -49,9 +65,13 @@
       {
         "hooks": [
           {
-            "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks-handlers/send-hook.sh PermissionRequest",
-            "timeout": 10
+            "type": "http",
+            "url": "${CLAUDE_STAR_BRIDGE_URL}/hook/claude",
+            "timeout": 10,
+            "headers": {
+              "X-Bridge-Secret": "${CLAUDE_STAR_BRIDGE_SECRET}"
+            },
+            "allowedEnvVars": ["CLAUDE_STAR_BRIDGE_URL", "CLAUDE_STAR_BRIDGE_SECRET"]
           }
         ]
       }
@@ -60,9 +80,13 @@
       {
         "hooks": [
           {
-            "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks-handlers/send-hook.sh PermissionDenied",
-            "timeout": 10
+            "type": "http",
+            "url": "${CLAUDE_STAR_BRIDGE_URL}/hook/claude",
+            "timeout": 10,
+            "headers": {
+              "X-Bridge-Secret": "${CLAUDE_STAR_BRIDGE_SECRET}"
+            },
+            "allowedEnvVars": ["CLAUDE_STAR_BRIDGE_URL", "CLAUDE_STAR_BRIDGE_SECRET"]
           }
         ]
       }
@@ -71,9 +95,13 @@
       {
         "hooks": [
           {
-            "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks-handlers/send-hook.sh TaskCreated",
-            "timeout": 10
+            "type": "http",
+            "url": "${CLAUDE_STAR_BRIDGE_URL}/hook/claude",
+            "timeout": 10,
+            "headers": {
+              "X-Bridge-Secret": "${CLAUDE_STAR_BRIDGE_SECRET}"
+            },
+            "allowedEnvVars": ["CLAUDE_STAR_BRIDGE_URL", "CLAUDE_STAR_BRIDGE_SECRET"]
           }
         ]
       }
@@ -82,9 +110,13 @@
       {
         "hooks": [
           {
-            "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks-handlers/send-hook.sh TaskCompleted",
-            "timeout": 10
+            "type": "http",
+            "url": "${CLAUDE_STAR_BRIDGE_URL}/hook/claude",
+            "timeout": 10,
+            "headers": {
+              "X-Bridge-Secret": "${CLAUDE_STAR_BRIDGE_SECRET}"
+            },
+            "allowedEnvVars": ["CLAUDE_STAR_BRIDGE_URL", "CLAUDE_STAR_BRIDGE_SECRET"]
           }
         ]
       }
@@ -93,9 +125,13 @@
       {
         "hooks": [
           {
-            "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks-handlers/send-hook.sh Stop",
-            "timeout": 10
+            "type": "http",
+            "url": "${CLAUDE_STAR_BRIDGE_URL}/hook/claude",
+            "timeout": 10,
+            "headers": {
+              "X-Bridge-Secret": "${CLAUDE_STAR_BRIDGE_SECRET}"
+            },
+            "allowedEnvVars": ["CLAUDE_STAR_BRIDGE_URL", "CLAUDE_STAR_BRIDGE_SECRET"]
           }
         ]
       }
@@ -104,9 +140,13 @@
       {
         "hooks": [
           {
-            "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks-handlers/send-hook.sh StopFailure",
-            "timeout": 10
+            "type": "http",
+            "url": "${CLAUDE_STAR_BRIDGE_URL}/hook/claude",
+            "timeout": 10,
+            "headers": {
+              "X-Bridge-Secret": "${CLAUDE_STAR_BRIDGE_SECRET}"
+            },
+            "allowedEnvVars": ["CLAUDE_STAR_BRIDGE_URL", "CLAUDE_STAR_BRIDGE_SECRET"]
           }
         ]
       }
@@ -115,9 +155,13 @@
       {
         "hooks": [
           {
-            "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks-handlers/send-hook.sh SubagentStart",
-            "timeout": 10
+            "type": "http",
+            "url": "${CLAUDE_STAR_BRIDGE_URL}/hook/claude",
+            "timeout": 10,
+            "headers": {
+              "X-Bridge-Secret": "${CLAUDE_STAR_BRIDGE_SECRET}"
+            },
+            "allowedEnvVars": ["CLAUDE_STAR_BRIDGE_URL", "CLAUDE_STAR_BRIDGE_SECRET"]
           }
         ]
       }
@@ -126,9 +170,13 @@
       {
         "hooks": [
           {
-            "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks-handlers/send-hook.sh SubagentStop",
-            "timeout": 10
+            "type": "http",
+            "url": "${CLAUDE_STAR_BRIDGE_URL}/hook/claude",
+            "timeout": 10,
+            "headers": {
+              "X-Bridge-Secret": "${CLAUDE_STAR_BRIDGE_SECRET}"
+            },
+            "allowedEnvVars": ["CLAUDE_STAR_BRIDGE_URL", "CLAUDE_STAR_BRIDGE_SECRET"]
           }
         ]
       }
@@ -137,9 +185,13 @@
       {
         "hooks": [
           {
-            "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks-handlers/send-hook.sh SessionEnd",
-            "timeout": 10
+            "type": "http",
+            "url": "${CLAUDE_STAR_BRIDGE_URL}/hook/claude",
+            "timeout": 10,
+            "headers": {
+              "X-Bridge-Secret": "${CLAUDE_STAR_BRIDGE_SECRET}"
+            },
+            "allowedEnvVars": ["CLAUDE_STAR_BRIDGE_URL", "CLAUDE_STAR_BRIDGE_SECRET"]
           }
         ]
       }
@@ -148,9 +200,13 @@
       {
         "hooks": [
           {
-            "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks-handlers/send-hook.sh Notification",
-            "timeout": 10
+            "type": "http",
+            "url": "${CLAUDE_STAR_BRIDGE_URL}/hook/claude",
+            "timeout": 10,
+            "headers": {
+              "X-Bridge-Secret": "${CLAUDE_STAR_BRIDGE_SECRET}"
+            },
+            "allowedEnvVars": ["CLAUDE_STAR_BRIDGE_URL", "CLAUDE_STAR_BRIDGE_SECRET"]
           }
         ]
       }
@@ -159,9 +215,13 @@
       {
         "hooks": [
           {
-            "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks-handlers/send-hook.sh UserPromptSubmit",
-            "timeout": 10
+            "type": "http",
+            "url": "${CLAUDE_STAR_BRIDGE_URL}/hook/claude",
+            "timeout": 10,
+            "headers": {
+              "X-Bridge-Secret": "${CLAUDE_STAR_BRIDGE_SECRET}"
+            },
+            "allowedEnvVars": ["CLAUDE_STAR_BRIDGE_URL", "CLAUDE_STAR_BRIDGE_SECRET"]
           }
         ]
       }
@@ -170,9 +230,13 @@
       {
         "hooks": [
           {
-            "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks-handlers/send-hook.sh Setup",
-            "timeout": 10
+            "type": "http",
+            "url": "${CLAUDE_STAR_BRIDGE_URL}/hook/claude",
+            "timeout": 10,
+            "headers": {
+              "X-Bridge-Secret": "${CLAUDE_STAR_BRIDGE_SECRET}"
+            },
+            "allowedEnvVars": ["CLAUDE_STAR_BRIDGE_URL", "CLAUDE_STAR_BRIDGE_SECRET"]
           }
         ]
       }
@@ -181,9 +245,13 @@
       {
         "hooks": [
           {
-            "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks-handlers/send-hook.sh TeammateIdle",
-            "timeout": 10
+            "type": "http",
+            "url": "${CLAUDE_STAR_BRIDGE_URL}/hook/claude",
+            "timeout": 10,
+            "headers": {
+              "X-Bridge-Secret": "${CLAUDE_STAR_BRIDGE_SECRET}"
+            },
+            "allowedEnvVars": ["CLAUDE_STAR_BRIDGE_URL", "CLAUDE_STAR_BRIDGE_SECRET"]
           }
         ]
       }
@@ -192,9 +260,13 @@
       {
         "hooks": [
           {
-            "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks-handlers/send-hook.sh Elicitation",
-            "timeout": 10
+            "type": "http",
+            "url": "${CLAUDE_STAR_BRIDGE_URL}/hook/claude",
+            "timeout": 10,
+            "headers": {
+              "X-Bridge-Secret": "${CLAUDE_STAR_BRIDGE_SECRET}"
+            },
+            "allowedEnvVars": ["CLAUDE_STAR_BRIDGE_URL", "CLAUDE_STAR_BRIDGE_SECRET"]
           }
         ]
       }
@@ -203,9 +275,13 @@
       {
         "hooks": [
           {
-            "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks-handlers/send-hook.sh ElicitationResult",
-            "timeout": 10
+            "type": "http",
+            "url": "${CLAUDE_STAR_BRIDGE_URL}/hook/claude",
+            "timeout": 10,
+            "headers": {
+              "X-Bridge-Secret": "${CLAUDE_STAR_BRIDGE_SECRET}"
+            },
+            "allowedEnvVars": ["CLAUDE_STAR_BRIDGE_URL", "CLAUDE_STAR_BRIDGE_SECRET"]
           }
         ]
       }
@@ -214,9 +290,13 @@
       {
         "hooks": [
           {
-            "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks-handlers/send-hook.sh ConfigChange",
-            "timeout": 10
+            "type": "http",
+            "url": "${CLAUDE_STAR_BRIDGE_URL}/hook/claude",
+            "timeout": 10,
+            "headers": {
+              "X-Bridge-Secret": "${CLAUDE_STAR_BRIDGE_SECRET}"
+            },
+            "allowedEnvVars": ["CLAUDE_STAR_BRIDGE_URL", "CLAUDE_STAR_BRIDGE_SECRET"]
           }
         ]
       }
@@ -225,9 +305,13 @@
       {
         "hooks": [
           {
-            "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks-handlers/send-hook.sh InstructionsLoaded",
-            "timeout": 10
+            "type": "http",
+            "url": "${CLAUDE_STAR_BRIDGE_URL}/hook/claude",
+            "timeout": 10,
+            "headers": {
+              "X-Bridge-Secret": "${CLAUDE_STAR_BRIDGE_SECRET}"
+            },
+            "allowedEnvVars": ["CLAUDE_STAR_BRIDGE_URL", "CLAUDE_STAR_BRIDGE_SECRET"]
           }
         ]
       }
@@ -236,9 +320,13 @@
       {
         "hooks": [
           {
-            "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks-handlers/send-hook.sh CwdChanged",
-            "timeout": 10
+            "type": "http",
+            "url": "${CLAUDE_STAR_BRIDGE_URL}/hook/claude",
+            "timeout": 10,
+            "headers": {
+              "X-Bridge-Secret": "${CLAUDE_STAR_BRIDGE_SECRET}"
+            },
+            "allowedEnvVars": ["CLAUDE_STAR_BRIDGE_URL", "CLAUDE_STAR_BRIDGE_SECRET"]
           }
         ]
       }
@@ -247,9 +335,13 @@
       {
         "hooks": [
           {
-            "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks-handlers/send-hook.sh FileChanged",
-            "timeout": 10
+            "type": "http",
+            "url": "${CLAUDE_STAR_BRIDGE_URL}/hook/claude",
+            "timeout": 10,
+            "headers": {
+              "X-Bridge-Secret": "${CLAUDE_STAR_BRIDGE_SECRET}"
+            },
+            "allowedEnvVars": ["CLAUDE_STAR_BRIDGE_URL", "CLAUDE_STAR_BRIDGE_SECRET"]
           }
         ]
       }
@@ -258,9 +350,13 @@
       {
         "hooks": [
           {
-            "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks-handlers/send-hook.sh WorktreeCreate",
-            "timeout": 10
+            "type": "http",
+            "url": "${CLAUDE_STAR_BRIDGE_URL}/hook/claude",
+            "timeout": 10,
+            "headers": {
+              "X-Bridge-Secret": "${CLAUDE_STAR_BRIDGE_SECRET}"
+            },
+            "allowedEnvVars": ["CLAUDE_STAR_BRIDGE_URL", "CLAUDE_STAR_BRIDGE_SECRET"]
           }
         ]
       }
@@ -269,9 +365,13 @@
       {
         "hooks": [
           {
-            "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks-handlers/send-hook.sh WorktreeRemove",
-            "timeout": 10
+            "type": "http",
+            "url": "${CLAUDE_STAR_BRIDGE_URL}/hook/claude",
+            "timeout": 10,
+            "headers": {
+              "X-Bridge-Secret": "${CLAUDE_STAR_BRIDGE_SECRET}"
+            },
+            "allowedEnvVars": ["CLAUDE_STAR_BRIDGE_URL", "CLAUDE_STAR_BRIDGE_SECRET"]
           }
         ]
       }
@@ -280,9 +380,13 @@
       {
         "hooks": [
           {
-            "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks-handlers/send-hook.sh PreCompact",
-            "timeout": 10
+            "type": "http",
+            "url": "${CLAUDE_STAR_BRIDGE_URL}/hook/claude",
+            "timeout": 10,
+            "headers": {
+              "X-Bridge-Secret": "${CLAUDE_STAR_BRIDGE_SECRET}"
+            },
+            "allowedEnvVars": ["CLAUDE_STAR_BRIDGE_URL", "CLAUDE_STAR_BRIDGE_SECRET"]
           }
         ]
       }
@@ -291,9 +395,13 @@
       {
         "hooks": [
           {
-            "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks-handlers/send-hook.sh PostCompact",
-            "timeout": 10
+            "type": "http",
+            "url": "${CLAUDE_STAR_BRIDGE_URL}/hook/claude",
+            "timeout": 10,
+            "headers": {
+              "X-Bridge-Secret": "${CLAUDE_STAR_BRIDGE_SECRET}"
+            },
+            "allowedEnvVars": ["CLAUDE_STAR_BRIDGE_URL", "CLAUDE_STAR_BRIDGE_SECRET"]
           }
         ]
       }
