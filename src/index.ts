@@ -1061,6 +1061,63 @@ setInterval(()=>{if(ws&&ws.readyState===1)ws.send(JSON.stringify({type:"ping"}))
       }
     }
 
+    if (request.method === "POST" && url.pathname === "/web/token/revoke") {
+      if (!isAuthorized(request)) {
+        return json({ ok: false, error: "authentication required" }, { status: 401 });
+      }
+      let body: { token?: string };
+      try {
+        body = (await request.json()) as { token?: string };
+      } catch {
+        return json({ ok: false, error: "invalid json" }, { status: 400 });
+      }
+      const tokenToRevoke = body.token || config.zellijWebToken;
+      if (!tokenToRevoke) {
+        return json({ ok: false, error: "no token to revoke (none configured and none provided)" }, { status: 400 });
+      }
+      try {
+        const env = {
+          ...process.env,
+          HOME: process.env.HOME || "/root",
+          XDG_RUNTIME_DIR: process.env.XDG_RUNTIME_DIR || "/run/user/0",
+        };
+        const proc = Bun.spawn(["zellij", "web", "--revoke-token", tokenToRevoke], {
+          stdout: "pipe",
+          stderr: "pipe",
+          env,
+        });
+        const stdout = await new Response(proc.stdout).text();
+        const stderr = await new Response(proc.stderr).text();
+        const exitCode = await proc.exited;
+
+        if (exitCode !== 0) {
+          return json({
+            ok: false,
+            error: "zellij web --revoke-token failed",
+            exitCode,
+            stderr: stderr.trim() || null,
+          }, { status: 502 });
+        }
+
+        // If we revoked the currently-configured token, clear it
+        if (tokenToRevoke === config.zellijWebToken) {
+          (config as unknown as Record<string, unknown>).zellijWebToken = undefined;
+          broadcastSSE("web_token_revoked", { timestamp: new Date().toISOString() });
+        }
+
+        return json({
+          ok: true,
+          revoked: tokenToRevoke.slice(0, 8) + "...",
+          rawOutput: stdout.trim() || null,
+        });
+      } catch (error) {
+        return json({
+          ok: false,
+          error: error instanceof Error ? error.message : String(error),
+        }, { status: 500 });
+      }
+    }
+
     // Authenticated endpoint: returns the web token for bridge consumers
     // that need to open the Zellij web terminal programmatically
     if (request.method === "GET" && url.pathname === "/web/token") {
@@ -1251,6 +1308,7 @@ const ROUTE_TABLE: { method: string; path: string; description: string; auth: bo
   { method: "GET", path: "/web", description: "Zellij web config (URL, tokenSet, session)", auth: false },
   { method: "GET", path: "/web/token", description: "Zellij web token (authenticated)", auth: true },
   { method: "GET", path: "/web/token/refresh", description: "Refresh Zellij web token via CLI (authenticated)", auth: true },
+  { method: "POST", path: "/web/token/revoke", description: "Revoke a Zellij web token (authenticated)", auth: true },
   { method: "GET", path: "/status", description: "Unified overview (health+version+web+heap)", auth: false },
   { method: "GET", path: "/snapshot", description: "Full session state for drift correction", auth: false },
   { method: "GET", path: "/sessions", description: "Active session list", auth: false },
