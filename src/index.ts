@@ -17,7 +17,7 @@ const SSE_MAX_BUFFERED_MESSAGES = 32; // Drop clients with more than this many b
 let sseEventSeq = 0;
 let sseClientSeq = 0;
 const sseClients = new Map<number, { controller: ReadableStreamDefaultController; buffered: number; connectedAt: number }>();
-const BRIDGE_VERSION = "0.61.0";
+const BRIDGE_VERSION = "0.62.0";
 
 // Shared environment for zellij CLI subprocess calls
 function zellijEnv(session?: string): Record<string, string | undefined> {
@@ -1373,6 +1373,8 @@ async function handleRequest(request: Request, url: URL): Promise<Response> {
             }
           }
           request.signal.addEventListener("abort", () => {
+            // Bun may fire abort twice on disconnect — guard against double cleanup
+            if (!sseClients.has(clientId)) return;
             const client = sseClients.get(clientId);
             if (client) {
               // Record SSE connection duration
@@ -1611,7 +1613,14 @@ setInterval(()=>{fetch("/status").then(r=>r.json()).then(d=>{
       const before = process.memoryUsage();
       const force = url.searchParams.get("force") === "true";
       const shrink = url.searchParams.get("shrink") !== "false"; // default true
-      Bun.gc(force);
+      // Bun.gc(true) forces synchronous full GC + mimalloc purge (returns OS pages)
+      // Bun.gc() or Bun.gc(false) only does incremental GC — doesn't reduce RSS
+      // Bun.shrink() only trims ArrayBuffer buffers, does NOT shrink heap or return pages
+      if (force) {
+        Bun.gc(true); // Full GC + mimalloc purge for maximum RSS reduction
+      } else {
+        Bun.gc(false);
+      }
       if (shrink) Bun.shrink();
       const after = process.memoryUsage();
       metrics.gcTriggers++;
