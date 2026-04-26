@@ -1,6 +1,5 @@
 import { mkdir, appendFile } from "node:fs/promises";
 import { dirname } from "node:path";
-import { randomUUID } from "node:crypto";
 import { loadConfig } from "./config";
 import { SessionRegistry } from "./sessionRegistry";
 import { StarOfficeClient } from "./starOfficeClient";
@@ -13,23 +12,24 @@ import type {
 } from "./types";
 
 const SSE_REPLAY_CAPACITY = 64;
+let sseEventSeq = 0;
 const sseClients = new Set<ReadableStreamDefaultController>();
-const sseEventLog: { id: string; event: string; payload: unknown }[] = [];
+const sseEventLog: { id: number; event: string; payload: unknown }[] = [];
 const lastSignalByKey = new Map<string, string>();
 const dedupCounts = new Map<string, { seen: number; passed: number }>();
 const encoder = new TextEncoder();
 
-function formatSSE(data: unknown, event?: string, id?: string): Uint8Array {
+function formatSSE(data: unknown, event?: string, id?: number): Uint8Array {
   const parts: string[] = [];
-  if (id) parts.push(`id: ${id}`);
+  if (id !== undefined) parts.push(`id: ${id}`);
   if (event) parts.push(`event: ${event}`);
   parts.push(`data: ${JSON.stringify(data)}`);
   parts.push("", "");
   return encoder.encode(parts.join("\n"));
 }
 
-function broadcastSSE(event: string, payload: unknown): void {
-  const id = randomUUID();
+function broadcastSSE(event: string, payload: unknown): number {
+  const id = ++sseEventSeq;
   const entry = { id, event, payload };
   sseEventLog.push(entry);
   if (sseEventLog.length > SSE_REPLAY_CAPACITY) sseEventLog.shift();
@@ -232,23 +232,28 @@ const server = Bun.serve({
           // Send full snapshot on connect so new clients have current state
           const snapshot = registry.list();
           try {
-            controller.enqueue(formatSSE(snapshot, "snapshot", randomUUID()));
+            controller.enqueue(formatSSE(snapshot, "snapshot", ++sseEventSeq));
           } catch {
             sseClients.delete(controller);
             return;
           }
           // Replay recent events to new clients if they send Last-Event-ID
           if (lastEventId) {
-            const replayIndex = sseEventLog.findIndex((e) => e.id === lastEventId);
-            if (replayIndex !== -1) {
-              for (const entry of sseEventLog.slice(replayIndex + 1)) {
-                try {
-                  controller.enqueue(formatSSE(entry.payload, entry.event, entry.id));
-                } catch {
-                  sseClients.delete(controller);
-                  return;
+            const requestedId = Number(lastEventId);
+            if (!isNaN(requestedId)) {
+              const replayIndex = sseEventLog.findIndex((e) => e.id === requestedId);
+              if (replayIndex !== -1) {
+                // Found the event — replay everything after it
+                for (const entry of sseEventLog.slice(replayIndex + 1)) {
+                  try {
+                    controller.enqueue(formatSSE(entry.payload, entry.event, entry.id));
+                  } catch {
+                    sseClients.delete(controller);
+                    return;
+                  }
                 }
               }
+              // Stale Last-Event-ID (older than ring buffer): snapshot already sent above
             }
           }
           request.signal.addEventListener("abort", () => {
@@ -375,12 +380,15 @@ const server = Bun.serve({
     }
 
     if (request.method === "GET" && url.pathname === "/events/recent") {
-      const afterId = url.searchParams.get("after_id") || undefined;
+      const afterId = url.searchParams.get("after_id");
       let events = sseEventLog;
       if (afterId) {
-        const afterIndex = sseEventLog.findIndex((e) => e.id === afterId);
-        if (afterIndex !== -1) {
-          events = sseEventLog.slice(afterIndex + 1);
+        const requestedId = Number(afterId);
+        if (!isNaN(requestedId)) {
+          const afterIndex = sseEventLog.findIndex((e) => e.id === requestedId);
+          if (afterIndex !== -1) {
+            events = sseEventLog.slice(afterIndex + 1);
+          }
         }
       }
       return json({
