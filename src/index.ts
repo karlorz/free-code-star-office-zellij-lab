@@ -633,6 +633,11 @@ const server = Bun.serve({
       const data = ws.data as unknown as { authenticated: boolean };
       metrics.wsMessages++;
       const text = typeof message === "string" ? message : message.toString();
+      // Reject oversized messages (prevent abuse)
+      if (text.length > 65536) {
+        ws.send(JSON.stringify({ type: "error", error: "message too large (max 64KB)" }));
+        return;
+      }
       let parsed: Record<string, unknown>;
       try {
         parsed = JSON.parse(text);
