@@ -114,6 +114,25 @@
         { "expr": "sum(rate(caddy_http_request_duration_seconds_count{code=~\"5..\"}[3m]))", "legendFormat": "5xx Req/s", "refId": "B" }
       ],
       "fieldConfig": { "overrides": [{ "matcher": { "id": "byName", "options": "5xx Ratio" }, "properties": [{ "id": "unit", "value": "percentunit" }] }] }
+    },
+    {
+      "title": "Dedup Map + Request Saturation",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 28 },
+      "targets": [
+        { "expr": "bridge_dedup_entries", "legendFormat": "Dedup Keys", "refId": "A" },
+        { "expr": "rate(bridge_dedup_evicted_total[5m])", "legendFormat": "Evicted/s", "refId": "B" },
+        { "expr": "bridge_pending_requests", "legendFormat": "Pending Req", "refId": "C" },
+        { "expr": "bridge_pending_websockets", "legendFormat": "Pending WS", "refId": "D" }
+      ]
+    },
+    {
+      "title": "Bridge Heap Object Count",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 28 },
+      "targets": [
+        { "expr": "bridge_heap_object_count", "legendFormat": "JSC Objects", "refId": "A" }
+      ]
     }
   ],
   "refresh": "30s",

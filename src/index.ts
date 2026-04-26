@@ -456,6 +456,13 @@ function buildPrometheusMetrics(): string {
   lines.push(`# HELP bridge_dedup_evicted_total Total dedup entries evicted by TTL`);
   lines.push(`# TYPE bridge_dedup_evicted_total counter`);
   lines.push(`bridge_dedup_evicted_total ${metrics.dedupEvicted}`);
+  // Heap object count from cached heapStats (JSC engine)
+  const heapObjCount = cachedHeapStats?.objectCount as number | undefined;
+  if (heapObjCount !== undefined) {
+    lines.push(`# HELP bridge_heap_object_count JSC heap object count (sampled every 60s)`);
+    lines.push(`# TYPE bridge_heap_object_count gauge`);
+    lines.push(`bridge_heap_object_count ${heapObjCount}`);
+  }
   // HTTP request duration histograms
   lines.push(`# HELP bridge_http_request_duration_milliseconds HTTP request latency in milliseconds`);
   lines.push(`# TYPE bridge_http_request_duration_milliseconds histogram`);

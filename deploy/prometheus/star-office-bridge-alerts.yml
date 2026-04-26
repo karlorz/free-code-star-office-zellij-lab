@@ -199,6 +199,32 @@ groups:
           description: >-
             {{ $value }} in-flight requests. High for a single-upstream bridge.
 
+      # WARNING: Dedup map growing unboundedly — memory leak signal
+      - alert: BridgeDedupMapGrowth
+        expr: bridge_dedup_entries > 500
+        for: 15m
+        labels:
+          severity: warning
+          service: star-office-bridge
+        annotations:
+          summary: "Dedup map exceeds 500 entries on {{ $labels.instance }}"
+          description: >-
+            {{ $value }} dedup keys tracked. TTL eviction may not be keeping up
+            or signal source diversity is unusually high.
+
+      # WARNING: Request saturation — bridge may be overloaded
+      - alert: BridgeRequestSaturation
+        expr: bridge_pending_requests > 50
+        for: 5m
+        labels:
+          severity: warning
+          service: star-office-bridge
+        annotations:
+          summary: "Bridge pending requests above 50 on {{ $labels.instance }}"
+          description: >-
+            {{ $value }} pending HTTP requests. Bridge may be overloaded or
+            a downstream dependency is slow.
+
   # ── Recording Rules ────────────────────────────────────────────────
   # Only rules that genuinely accelerate queries are kept.
   # Trivial rate() on low-cardinality single-instance counters are removed —
