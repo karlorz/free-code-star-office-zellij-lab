@@ -601,6 +601,10 @@ async function handleRequest(request: Request, url: URL): Promise<Response> {
           state = "executing";
           detail = `command_change: ${typeof body.terminal_command === "string" ? body.terminal_command : "?"}`;
           break;
+        case "pane_content":
+          state = "executing";
+          detail = `pane_content: pane=${body.pane_id ?? "?"} lines=${body.viewport_lines ?? "?"}`;
+          break;
         case "pane_exit":
           state = "idle";
           detail = `pane_exit: exit=${body.exit_status ?? "?"} held=${body.is_held ?? "?"}`;
@@ -635,6 +639,10 @@ async function handleRequest(request: Request, url: URL): Promise<Response> {
           zellijIsFloating: typeof body.is_floating === "boolean" ? body.is_floating : undefined,
           zellijClientCount: body.client_count != null ? Number(body.client_count) : undefined,
           zellijTabNames: Array.isArray(body.tabs) ? body.tabs.map(String) : undefined,
+          zellijPaneId: typeof body.pane_id === "string" ? body.pane_id : undefined,
+          zellijViewportLines: body.viewport_lines != null ? Number(body.viewport_lines) : undefined,
+          zellijViewportHash: typeof body.viewport_hash === "string" ? body.viewport_hash : undefined,
+          zellijLastLine: typeof body.last_line === "string" ? body.last_line : undefined,
         },
       };
 

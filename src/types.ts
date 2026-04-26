@@ -78,6 +78,10 @@ export interface SignalContext {
   zellijIsFloating?: boolean;
   zellijClientCount?: number;
   zellijTabNames?: string[];
+  zellijPaneId?: string;
+  zellijViewportLines?: number;
+  zellijViewportHash?: string;
+  zellijLastLine?: string;
 }
 
 export interface NormalizedSignal {
