@@ -23,7 +23,8 @@ const CORS_HEADERS = {
 };
 const sseEventLog: { id: number; event: string; payload: unknown }[] = [];
 const lastSignalByKey = new Map<string, string>();
-const dedupCounts = new Map<string, { seen: number; passed: number }>();
+const dedupCounts = new Map<string, { seen: number; passed: number; lastSeenAt: number }>();
+const DEDUP_TTL_MS = 30 * 60 * 1000; // 30 minutes — evict stale dedup entries
 const encoder = new TextEncoder();
 
 // Prometheus metrics counters
@@ -527,8 +528,9 @@ async function processSignal(
   lastSignalByKey.set(dedupeKey, contextHash);
 
   // Track dedup stats per key
-  const stats = dedupCounts.get(dedupeKey) || { seen: 0, passed: 0 };
+  const stats = dedupCounts.get(dedupeKey) || { seen: 0, passed: 0, lastSeenAt: Date.now() };
   stats.seen++;
+  stats.lastSeenAt = Date.now();
   if (!isDuplicate) stats.passed++;
   dedupCounts.set(dedupeKey, stats);
 
@@ -598,18 +600,34 @@ const keepAliveInterval = setInterval(() => {
   }
 }, 15_000);
 
+// Cached heapStats — bun:jsc heapStats() costs 15-22ms; sample every 60s
+let cachedHeapStats: Record<string, unknown> | null = null;
+const heapStatsInterval = setInterval(() => {
+  try {
+    const { heapStats: hs } = require("bun:jsc") as { heapStats: () => Record<string, unknown> };
+    cachedHeapStats = hs();
+  } catch {}
+}, 60_000);
+// Initialize on startup
+try {
+  const { heapStats: hs } = require("bun:jsc") as { heapStats: () => Record<string, unknown> };
+  cachedHeapStats = hs();
+} catch {}
+
 // Periodic sweeper: prune stale dedup entries and log summary
 const sweeperInterval = setInterval(() => {
   const now = Date.now();
-  // Prune dedup entries that haven't been seen recently
+  let evictedByTtl = 0;
+  // TTL-based eviction: remove entries not seen in DEDUP_TTL_MS
   for (const [key, stats] of dedupCounts) {
-    if (stats.seen === stats.passed && stats.seen < 2) {
+    if (now - stats.lastSeenAt > DEDUP_TTL_MS) {
       dedupCounts.delete(key);
       lastSignalByKey.delete(key);
+      evictedByTtl++;
     }
   }
-  if (sseClients.size > 0 || sseEventLog.length > 0) {
-    console.log(`[bridge] sweep: ${sseClients.size} clients, ${sseEventLog.length} events, ${dedupCounts.size} dedup keys, seq=${sseEventSeq}`);
+  if (sseClients.size > 0 || sseEventLog.length > 0 || evictedByTtl > 0) {
+    console.log(`[bridge] sweep: ${sseClients.size} clients, ${sseEventLog.length} events, ${dedupCounts.size} dedup keys${evictedByTtl ? `, evicted ${evictedByTtl} by TTL` : ""}, seq=${sseEventSeq}`);
   }
 }, 60_000);
 
@@ -682,6 +700,7 @@ async function gracefulShutdown(signal: string): Promise<void> {
   clearInterval(sweeperInterval);
   clearInterval(snapshotPushInterval);
   clearInterval(logFlushInterval);
+  clearInterval(heapStatsInterval);
   clearInterval(compactionInterval);
 
   // Drain window for in-flight requests
@@ -1200,7 +1219,7 @@ setInterval(()=>{fetch("/status").then(r=>r.json()).then(d=>{
     if (request.method === "GET" && url.pathname === "/help") {
       return json({
         ok: true,
-        version: "0.24.0",
+        version: "0.25.0",
         routes: ROUTE_TABLE,
       });
     }
@@ -1208,12 +1227,27 @@ setInterval(()=>{fetch("/status").then(r=>r.json()).then(d=>{
     if (request.method === "GET" && url.pathname === "/version") {
       return json({
         ok: true,
-        version: "0.24.0",
+        version: "0.25.0",
         runtime: `bun ${Bun.version}`,
         arch: process.arch,
         platform: process.platform,
         uptime: process.uptime(),
       });
+    }
+
+    if (request.method === "GET" && url.pathname === "/debug/heap-snapshot") {
+      if (!isAuthorized(request)) {
+        return json({ ok: false, error: "authentication required" }, { status: 401 });
+      }
+      try {
+        const v8 = require("node:v8") as typeof import("node:v8");
+        const snapshotPath = `/tmp/bridge-heap-${Date.now()}.heapsnapshot`;
+        const written = v8.writeHeapSnapshot(snapshotPath);
+        console.log(`[bridge] heap snapshot written to ${written}`);
+        return json({ ok: true, path: written, note: "Load in Chrome DevTools > Memory tab" });
+      } catch (error) {
+        return json({ ok: false, error: error instanceof Error ? error.message : String(error) }, { status: 500 });
+      }
     }
 
     if (request.method === "GET" && url.pathname === "/diagnostics") {
@@ -1350,11 +1384,7 @@ setInterval(()=>{fetch("/status").then(r=>r.json()).then(d=>{
       const totalSeen = [...dedupCounts.values()].reduce((sum, s) => sum + s.seen, 0);
       const totalPassed = [...dedupCounts.values()].reduce((sum, s) => sum + s.passed, 0);
       // Bun heap stats from bun:jsc (production memory monitoring)
-      let heapStats: Record<string, unknown> | null = null;
-      try {
-        const { heapStats: hs } = require("bun:jsc") as { heapStats: () => Record<string, unknown> };
-        heapStats = hs();
-      } catch {}
+      let heapStats: Record<string, unknown> | null = cachedHeapStats;
       // Build Prometheus exposition format for /metrics endpoint reuse
       const prometheusLines = buildPrometheusMetrics();
       return json({
@@ -1814,8 +1844,9 @@ setInterval(()=>{fetch("/status").then(r=>r.json()).then(d=>{
         const lastHash = lastSignalByKey.get(dedupeKey);
         const isDuplicate = lastHash === contextHash;
         lastSignalByKey.set(dedupeKey, contextHash);
-        const stats = dedupCounts.get(dedupeKey) || { seen: 0, passed: 0 };
+        const stats = dedupCounts.get(dedupeKey) || { seen: 0, passed: 0, lastSeenAt: Date.now() };
         stats.seen++;
+        stats.lastSeenAt = Date.now();
         if (!isDuplicate) stats.passed++;
         dedupCounts.set(dedupeKey, stats);
 
@@ -2094,11 +2125,7 @@ setInterval(()=>{fetch("/status").then(r=>r.json()).then(d=>{
 
     if (request.method === "GET" && url.pathname === "/status") {
       // Unified overview combining health + version + web config + caddy health
-      let heapStats: Record<string, unknown> | null = null;
-      try {
-        const { heapStats: hs } = require("bun:jsc") as { heapStats: () => Record<string, unknown> };
-        heapStats = hs();
-      } catch {}
+      let heapStats: Record<string, unknown> | null = cachedHeapStats;
       let caddyHealth: { healthy: boolean; upstreamsHealthy: number; upstreamsTotal: number } | null = null;
       try {
         const caddyResp = await fetch("http://127.0.0.1:2019/metrics");
@@ -2110,7 +2137,7 @@ setInterval(()=>{fetch("/status").then(r=>r.json()).then(d=>{
       } catch {}
       return json({
         ok: true,
-        version: "0.24.0",
+        version: "0.25.0",
         runtime: `bun ${Bun.version}`,
         arch: process.arch,
         platform: process.platform,
@@ -2338,6 +2365,7 @@ const ROUTE_TABLE: { method: string; path: string; description: string; auth: bo
   { method: "GET", path: "/metrics/combined", description: "Bridge + Caddy merged metrics (single scrape target)", auth: false },
   { method: "GET", path: "/version", description: "Bridge version, runtime, arch", auth: false },
   { method: "GET", path: "/diagnostics", description: "Stale pipe detection, log size, dedup summary (authenticated)", auth: true },
+  { method: "GET", path: "/debug/heap-snapshot", description: "Generate heap snapshot for leak debugging (authenticated)", auth: true },
   { method: "GET", path: "/ws", description: "WebSocket for bidirectional control (upgrade, auth optional — unauth=read-only)", auth: false },
   { method: "GET", path: "/help", description: "This route table", auth: false },
 ];
