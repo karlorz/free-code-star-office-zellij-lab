@@ -17,7 +17,7 @@ const SSE_MAX_BUFFERED_MESSAGES = 32; // Drop clients with more than this many b
 let sseEventSeq = 0;
 let sseClientSeq = 0;
 const sseClients = new Map<number, { controller: ReadableStreamDefaultController; buffered: number; connectedAt: number }>();
-const BRIDGE_VERSION = "0.60.0";
+const BRIDGE_VERSION = "0.61.0";
 
 // Shared environment for zellij CLI subprocess calls
 function zellijEnv(session?: string): Record<string, string | undefined> {
@@ -132,8 +132,14 @@ function broadcastSSEWithId(id: number, event: string, payload: unknown): number
   for (const [cid, client] of sseClients) {
     try {
       client.controller.enqueue(message);
+      // Bun/Web Streams: enqueue() does NOT throw on backpressure (spec limitation).
+      // Check desiredSize to detect slow consumers — negative means queue is full.
+      const ds = client.controller.desiredSize;
+      if (ds !== null && ds <= 0) {
+        client.buffered++;
+      }
       if (client.buffered > SSE_MAX_BUFFERED_MESSAGES) {
-        console.warn(`[bridge] dropping slow SSE client ${cid} (${client.buffered} buffered messages)`);
+        console.warn(`[bridge] dropping slow SSE client ${cid} (${client.buffered} buffered, desiredSize=${ds})`);
         metrics.sseClientEvicted++;
         try {
           client.controller.enqueue(formatSSE({ reason: "backpressure", bufferedMessages: client.buffered }, "backpressure"));
@@ -142,12 +148,9 @@ function broadcastSSEWithId(id: number, event: string, payload: unknown): number
         sseClients.delete(cid);
       }
     } catch {
-      client.buffered++;
-      if (client.buffered > SSE_MAX_BUFFERED_MESSAGES) {
-        console.warn(`[bridge] dropping stalled SSE client ${cid} (${client.buffered} failed enqueues)`);
-        metrics.sseClientEvicted++;
-        sseClients.delete(cid);
-      }
+      // enqueue threw — stream is broken (client disconnected mid-write)
+      metrics.sseClientEvicted++;
+      sseClients.delete(cid);
     }
   }
   // Also publish to WebSocket subscribers

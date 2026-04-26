@@ -252,6 +252,19 @@ groups:
             The session server may have crashed or the UDS socket is gone.
             IPC-dependent actions will fall back to CLI spawns.
 
+      # WARNING: SSE clients being evicted for slow consumption
+      - alert: BridgeSSEClientEvictions
+        expr: rate(bridge_sse_client_evicted_total[5m]) > 0.5
+        for: 5m
+        labels:
+          severity: warning
+          service: star-office-bridge
+        annotations:
+          summary: "SSE clients being evicted on {{ $labels.instance }}"
+          description: >-
+            {{ $value | printf "%.1f" }} SSE clients evicted/sec for slow consumption.
+            May indicate consumer overload, upstream latency spike, or network issues.
+
   # ── Recording Rules ────────────────────────────────────────────────
   # Only rules that genuinely accelerate queries are kept.
   # Trivial rate() on low-cardinality single-instance counters are removed —
