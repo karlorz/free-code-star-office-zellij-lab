@@ -184,9 +184,11 @@ print(json.dumps([t.get("name","") for t in d]))
   fi
 
   # Get client count (tabular output, no --json)
-  client_output="$(ZELLIJ_SESSION_NAME="$SESSION_NAME" zellij action list-clients 2>/dev/null)"
+  client_output="$(ZELLIJ_SESSION_NAME="$SESSION_NAME" zellij action list-clients 2>/dev/null || true)"
   if [[ -n "$client_output" ]]; then
-    client_count="$(echo "$client_output" | tail -n +2 | grep -c . || echo 0)"
+    client_count="$(echo "$client_output" | tail -n +2 | grep -c '.' || true)"
+    client_count="${client_count// /}"
+    client_count="${client_count:-0}"
   else
     client_count=0
   fi
