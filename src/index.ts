@@ -17,7 +17,7 @@ const SSE_MAX_BUFFERED_MESSAGES = 32; // Drop clients with more than this many b
 let sseEventSeq = 0;
 let sseClientSeq = 0;
 const sseClients = new Map<number, { controller: ReadableStreamDefaultController; buffered: number; connectedAt: number }>();
-const BRIDGE_VERSION = "0.45.0";
+const BRIDGE_VERSION = "0.46.0";
 
 // Shared environment for zellij CLI subprocess calls
 function zellijEnv(session?: string): Record<string, string | undefined> {
@@ -239,9 +239,13 @@ async function appendEvent(entry: BridgeEventLogEntry): Promise<void> {
         // Compress the new .1 file in the background — reduces storage ~90%
         // onExit handler prevents zombie process when zstd finishes
         const zstSrc = `${config.eventsLogPath}.1`;
-        Bun.spawn({ cmd: ["zstd", "-3", "--rm", zstSrc], stderr: "ignore", onExit(proc, exitCode) {
+        const zstProc = Bun.spawn({ cmd: ["zstd", "-3", "--rm", zstSrc], stderr: "ignore", onExit(proc, exitCode) {
           if (exitCode !== 0) console.warn(`[bridge] zstd compression failed for ${zstSrc}: exit=${exitCode}`);
+          // Remove from tracked procs when done
+          const idx = backgroundProcs.indexOf(zstProc);
+          if (idx >= 0) backgroundProcs.splice(idx, 1);
         } });
+        backgroundProcs.push(zstProc);
       }
     } catch {
       // File doesn't exist yet — no rotation needed
@@ -760,6 +764,9 @@ const snapshotPushInterval = setInterval(() => {
 
 let isShuttingDown = false;
 
+// Track background subprocesses for clean shutdown
+const backgroundProcs: Bun.Subprocess[] = [];
+
 async function gracefulShutdown(signal: string): Promise<void> {
   if (isShuttingDown) return;
   isShuttingDown = true;
@@ -791,6 +798,19 @@ async function gracefulShutdown(signal: string): Promise<void> {
 
   // Drain window for in-flight requests
   await Bun.sleep(2000);
+
+  // Clean up background subprocesses (zstd compression, etc.)
+  if (backgroundProcs.length > 0) {
+    console.log(`[bridge] terminating ${backgroundProcs.length} background subprocesses...`);
+    for (const proc of backgroundProcs) {
+      try { proc.kill("SIGTERM"); } catch {}
+    }
+    await Promise.race([
+      Promise.allSettled(backgroundProcs.map(p => p.exited)),
+      Bun.sleep(5000),
+    ]);
+    backgroundProcs.length = 0;
+  }
 
   // Flush and close log sink before persisting metrics
   await flushLogSink();
