@@ -1,5 +1,5 @@
 import { mkdir, appendFile, readFile, stat, unlink } from "node:fs/promises";
-import { dirname } from "node:path";
+import { dirname, join } from "node:path";
 import { loadConfig, timingSafeCompare } from "./config";
 import { SessionRegistry } from "./sessionRegistry";
 import { StarOfficeClient } from "./starOfficeClient";
@@ -515,6 +515,33 @@ async function gracefulShutdown(signal: string): Promise<void> {
 
   // Drain window for in-flight requests
   await Bun.sleep(2000);
+
+  // Persist final metrics snapshot before exit
+  try {
+    const metricsPath = join(dirname(config.eventsLogPath), "shutdown-metrics.json");
+    const { writeFile } = await import("node:fs/promises");
+    const snapshot = {
+      shutdownAt: new Date().toISOString(),
+      reason: signal,
+      uptime: process.uptime(),
+      finalMetrics: {
+        sseBroadcasts: metrics.sseBroadcasts,
+        sseClientConnected: metrics.sseClientConnected,
+        sseClientDisconnected: metrics.sseClientDisconnected,
+        sseClientEvicted: metrics.sseClientEvicted,
+        signalsProcessed: metrics.signalsProcessed,
+        signalsDuplicate: metrics.signalsDuplicate,
+        actionsExecuted: metrics.actionsExecuted,
+        tokenRefreshes: metrics.tokenRefreshes,
+        tokenRevocations: metrics.tokenRevocations,
+        wsConnections: metrics.wsConnections,
+        wsMessages: metrics.wsMessages,
+      },
+    };
+    await writeFile(metricsPath, JSON.stringify(snapshot, null, 2), "utf8");
+    console.log(`[bridge] shutdown metrics written to ${metricsPath}`);
+  } catch {}
+
   process.exit(0);
 }
 
