@@ -440,6 +440,13 @@ function buildPrometheusMetrics(): string {
   lines.push(`# HELP bridge_process_memory_heap_bytes Process heap memory in bytes`);
   lines.push(`# TYPE bridge_process_memory_heap_bytes gauge`);
   lines.push(`bridge_process_memory_heap_bytes ${mem.heapUsed}`);
+  // Server pending metrics (zero-overhead Bun.serve counters)
+  lines.push(`# HELP bridge_pending_requests Number of in-flight HTTP requests`);
+  lines.push(`# TYPE bridge_pending_requests gauge`);
+  lines.push(`bridge_pending_requests ${server.pendingRequests}`);
+  lines.push(`# HELP bridge_pending_websockets Number of active WebSocket connections`);
+  lines.push(`# TYPE bridge_pending_websockets gauge`);
+  lines.push(`bridge_pending_websockets ${server.pendingWebSockets}`);
   // HTTP request duration histograms
   lines.push(`# HELP bridge_http_request_duration_milliseconds HTTP request latency in milliseconds`);
   lines.push(`# TYPE bridge_http_request_duration_milliseconds histogram`);
@@ -720,6 +727,15 @@ async function gracefulShutdown(signal: string): Promise<void> {
 
 process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
 process.on("SIGINT", () => gracefulShutdown("SIGINT"));
+
+// Crash handlers: log and exit rather than continuing in corrupted state
+process.on("uncaughtException", (error) => {
+  console.error("[bridge] uncaught exception (exiting):", error);
+  gracefulShutdown("uncaughtException").catch(() => process.exit(1));
+});
+process.on("unhandledRejection", (reason) => {
+  console.error("[bridge] unhandled rejection:", reason);
+});
 
 const server = Bun.serve({
   hostname: config.host,
@@ -1024,6 +1040,9 @@ async function handleRequest(request: Request, url: URL): Promise<Response> {
         dryRun: config.dryRun,
         starOfficeUrl: config.starOfficeUrl || null,
         sseClients: sseClients.size,
+        wsClients: metrics.wsClientsCurrent,
+        pendingRequests: server.pendingRequests,
+        pendingWebSockets: server.pendingWebSockets,
         sseEventLogSize: sseEventLog.length,
         sessions: registry.list().length,
         sseClientIds: [...sseClients.keys()],
@@ -1181,7 +1200,7 @@ setInterval(()=>{fetch("/status").then(r=>r.json()).then(d=>{
     if (request.method === "GET" && url.pathname === "/help") {
       return json({
         ok: true,
-        version: "0.23.0",
+        version: "0.24.0",
         routes: ROUTE_TABLE,
       });
     }
@@ -1189,7 +1208,7 @@ setInterval(()=>{fetch("/status").then(r=>r.json()).then(d=>{
     if (request.method === "GET" && url.pathname === "/version") {
       return json({
         ok: true,
-        version: "0.23.0",
+        version: "0.24.0",
         runtime: `bun ${Bun.version}`,
         arch: process.arch,
         platform: process.platform,
@@ -2091,7 +2110,7 @@ setInterval(()=>{fetch("/status").then(r=>r.json()).then(d=>{
       } catch {}
       return json({
         ok: true,
-        version: "0.23.0",
+        version: "0.24.0",
         runtime: `bun ${Bun.version}`,
         arch: process.arch,
         platform: process.platform,
