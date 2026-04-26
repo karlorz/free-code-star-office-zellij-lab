@@ -17,7 +17,7 @@ const SSE_MAX_BUFFERED_MESSAGES = 32; // Drop clients with more than this many b
 let sseEventSeq = 0;
 let sseClientSeq = 0;
 const sseClients = new Map<number, { controller: ReadableStreamDefaultController; buffered: number; connectedAt: number }>();
-const BRIDGE_VERSION = "0.38.0";
+const BRIDGE_VERSION = "0.39.0";
 
 // Shared environment for zellij CLI subprocess calls
 function zellijEnv(session?: string): Record<string, string | undefined> {
@@ -553,13 +553,14 @@ const ALLOWED_ACTIONS = new Set([
 ]);
 
 // Actions eligible for direct UDS+protobuf IPC (3.6x faster than CLI spawn)
+// Note: dump-screen excluded — screen content not returned via IPC channel
 const IPC_ELIGIBLE = new Set([
   "list-tabs", "list-panes", "list-clients", "current-tab-info",
   "go-to-next-tab", "go-to-previous-tab", "close-tab", "new-tab", "rename-tab",
   "move-focus", "move-focus-or-tab", "toggle-fullscreen", "toggle-pane-frames",
   "toggle-floating-panes", "focus-next-pane", "focus-previous-pane",
   "detach", "no-op", "scroll-up", "scroll-down", "scroll-to-bottom", "scroll-to-top",
-  "clear-screen", "dump-screen", "dump-layout", "save-session", "rename-session",
+  "clear-screen", "dump-layout", "save-session", "rename-session",
   "resize", "write", "write-chars", "move-pane",
 ]);
 
