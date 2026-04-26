@@ -1028,7 +1028,7 @@ setInterval(()=>{if(ws&&ws.readyState===1)ws.send(JSON.stringify({type:"ping"}))
       if (!isAuthorized(request)) {
         return json({ ok: false, error: "authentication required" }, { status: 401 });
       }
-      // Run zellij web --create-token and update the in-memory config
+      // Revoke old token first, then create new one — prevents stale token accumulation
       try {
         const env = {
           ...process.env,
@@ -1036,6 +1036,24 @@ setInterval(()=>{if(ws&&ws.readyState===1)ws.send(JSON.stringify({type:"ping"}))
           XDG_RUNTIME_DIR: process.env.XDG_RUNTIME_DIR || "/run/user/0",
           ZELLIJ_SESSION_NAME: config.zellijSessionName || "",
         };
+
+        // Step 1: Revoke old token if we know its name
+        const oldTokenName = config.zellijWebTokenName;
+        let revokedOld = false;
+        if (oldTokenName) {
+          try {
+            const revokeProc = Bun.spawn(["zellij", "web", "--revoke-token", oldTokenName], {
+              stdout: "pipe", stderr: "pipe", env,
+            });
+            const revokeExit = await revokeProc.exited;
+            revokedOld = revokeExit === 0;
+            if (!revokedOld) console.warn(`[bridge] failed to revoke old token ${oldTokenName}`);
+          } catch (err) {
+            console.warn("[bridge] error revoking old token:", err);
+          }
+        }
+
+        // Step 2: Create new token
         const proc = Bun.spawn(["zellij", "web", "--create-token"], {
           stdout: "pipe",
           stderr: "pipe",
@@ -1100,6 +1118,8 @@ setInterval(()=>{if(ws&&ws.readyState===1)ws.send(JSON.stringify({type:"ping"}))
           ok: true,
           refreshed: !!newToken,
           tokenName: newTokenName,
+          revokedOld,
+          oldTokenName,
           webUrl,
           webToken: newToken,
           sessionName,
