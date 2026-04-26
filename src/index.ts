@@ -16,7 +16,19 @@ const SSE_MAX_BUFFERED_MESSAGES = 32; // Drop clients with more than this many b
 let sseEventSeq = 0;
 let sseClientSeq = 0;
 const sseClients = new Map<number, { controller: ReadableStreamDefaultController; buffered: number; connectedAt: number }>();
-const BRIDGE_VERSION = "0.32.0";
+const BRIDGE_VERSION = "0.33.0";
+
+// Shared environment for zellij CLI subprocess calls
+function zellijEnv(session?: string): Record<string, string | undefined> {
+  return {
+    ...process.env,
+    ZELLIJ_SESSION_NAME: session || config.zellijSessionName || "",
+    HOME: process.env.HOME || "/root",
+    XDG_RUNTIME_DIR: process.env.XDG_RUNTIME_DIR || "/run/user/0",
+    PATH: process.env.PATH || "/usr/local/bin:/usr/bin:/bin",
+  };
+}
+
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
@@ -896,12 +908,7 @@ const server = Bun.serve({
             return;
           }
           const session = wsSession || config.zellijSessionName || "main";
-          const env = {
-            ...process.env,
-            ZELLIJ_SESSION_NAME: session,
-            HOME: process.env.HOME || "/root",
-            XDG_RUNTIME_DIR: process.env.XDG_RUNTIME_DIR || "/run/user/0",
-          };
+          const env = zellijEnv(session);
           try {
             const proc = Bun.spawn(["zellij", "action", action, ...args], {
               stdout: "pipe",
@@ -1329,7 +1336,7 @@ setInterval(()=>{fetch("/status").then(r=>r.json()).then(d=>{
       try {
         const pipeProc = Bun.spawn(["pgrep", "-af", "zellij pipe"], {
           stdout: "pipe", stderr: "pipe",
-          env: { ...process.env, HOME: process.env.HOME || "/root" },
+          env: zellijEnv(),
         });
         const pipeOutput = await new Response(pipeProc.stdout).text();
         const pipeExit = await pipeProc.exited;
@@ -1965,12 +1972,7 @@ setInterval(()=>{fetch("/status").then(r=>r.json()).then(d=>{
       }
       // Revoke old token first, then create new one — prevents stale token accumulation
       try {
-        const env = {
-          ...process.env,
-          HOME: process.env.HOME || "/root",
-          XDG_RUNTIME_DIR: process.env.XDG_RUNTIME_DIR || "/run/user/0",
-          ZELLIJ_SESSION_NAME: config.zellijSessionName || "",
-        };
+        const env = zellijEnv();
 
         // Step 1: Revoke old token if we know its name
         const oldTokenName = config.zellijWebTokenName;
@@ -2081,11 +2083,7 @@ setInterval(()=>{fetch("/status").then(r=>r.json()).then(d=>{
         return json({ ok: false, error: "invalid json" }, { status: 400 });
       }
       try {
-        const env = {
-          ...process.env,
-          HOME: process.env.HOME || "/root",
-          XDG_RUNTIME_DIR: process.env.XDG_RUNTIME_DIR || "/run/user/0",
-        };
+        const env = zellijEnv();
         if (body.revokeAll) {
           // Revoke all tokens
           const proc = Bun.spawn(["zellij", "web", "--revoke-all-tokens"], {
@@ -2143,11 +2141,7 @@ setInterval(()=>{fetch("/status").then(r=>r.json()).then(d=>{
         return json({ ok: false, error: "authentication required" }, { status: 401 });
       }
       try {
-        const env = {
-          ...process.env,
-          HOME: process.env.HOME || "/root",
-          XDG_RUNTIME_DIR: process.env.XDG_RUNTIME_DIR || "/run/user/0",
-        };
+        const env = zellijEnv();
         const proc = Bun.spawn(["zellij", "web", "--list-tokens"], {
           stdout: "pipe", stderr: "pipe", env,
         });
@@ -2256,12 +2250,7 @@ setInterval(()=>{fetch("/status").then(r=>r.json()).then(d=>{
 
       const session = body.session || config.zellijSessionName || "main";
       const args = body.args || [];
-      const env = {
-        ZELLIJ_SESSION_NAME: session,
-        HOME: process.env.HOME || "/root",
-        XDG_RUNTIME_DIR: process.env.XDG_RUNTIME_DIR || "/run/user/0",
-        PATH: process.env.PATH || "/usr/local/bin:/usr/bin:/bin",
-      };
+      const env = zellijEnv(session);
 
       try {
         const cmd = ["zellij", "action", body.action, ...args];
@@ -2336,12 +2325,7 @@ setInterval(()=>{fetch("/status").then(r=>r.json()).then(d=>{
         }
         const session = rawSession || config.zellijSessionName || "main";
         const args = rawArgs || [];
-        const env = {
-          ZELLIJ_SESSION_NAME: session,
-          HOME: process.env.HOME || "/root",
-          XDG_RUNTIME_DIR: process.env.XDG_RUNTIME_DIR || "/run/user/0",
-          PATH: process.env.PATH || "/usr/local/bin:/usr/bin:/bin",
-        };
+        const env = zellijEnv(session);
         try {
           const cmd = ["zellij", "action", action, ...args];
           const proc = Bun.spawn(cmd, { env, stdout: "pipe", stderr: "pipe" });
