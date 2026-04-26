@@ -342,6 +342,9 @@ async function gracefulShutdown(signal: string): Promise<void> {
   isShuttingDown = true;
   console.log(`[bridge] received ${signal}, draining ${sseClients.size} SSE clients...`);
 
+  // Stop accepting new connections — in-flight requests can still complete
+  server.stop(false);
+
   const shutdownMessage = formatSSE({ shutdown: true, reason: signal }, "shutdown");
   for (const [cid, client] of sseClients) {
     try {
@@ -353,7 +356,8 @@ async function gracefulShutdown(signal: string): Promise<void> {
   clearInterval(keepAliveInterval);
   clearInterval(sweeperInterval);
 
-  await Bun.sleep(1000);
+  // Drain window for in-flight requests
+  await Bun.sleep(2000);
   process.exit(0);
 }
 
@@ -363,6 +367,7 @@ process.on("SIGINT", () => gracefulShutdown("SIGINT"));
 const server = Bun.serve({
   hostname: config.host,
   port: config.port,
+  idleTimeout: 255, // Max allowed — prevents SSE streams from being killed during quiet periods
   fetch: async (request: Request): Promise<Response> => {
     const url = new URL(request.url);
     const start = performance.now();
@@ -608,6 +613,12 @@ es.onmessage=e=>{add("other",e.type+": "+e.data)};
       );
       const totalSeen = [...dedupCounts.values()].reduce((sum, s) => sum + s.seen, 0);
       const totalPassed = [...dedupCounts.values()].reduce((sum, s) => sum + s.passed, 0);
+      // Bun heap stats from bun:jsc (production memory monitoring)
+      let heapStats: Record<string, unknown> | null = null;
+      try {
+        const { heapStats: hs } = require("bun:jsc") as { heapStats: () => Record<string, unknown> };
+        heapStats = hs();
+      } catch {}
       return json({
         ok: true,
         uptime: process.uptime(),
@@ -615,6 +626,7 @@ es.onmessage=e=>{add("other",e.type+": "+e.data)};
         sseClientIds: [...sseClients.keys()],
         sseEventLogSize: sseEventLog.length,
         sessions: registry.list().length,
+        heap: heapStats,
         dedup: {
           totalSeen,
           totalPassed,

@@ -16,6 +16,12 @@ Restart=on-failure
 RestartSec=3
 UMask=0077
 
+# Graceful shutdown: give 30s for server.stop() + SSE drain before SIGKILL
+TimeoutStopSec=30
+
+# High connection count for SSE clients
+LimitNOFILE=65535
+
 # Logging: journal integration
 StandardOutput=journal
 StandardError=journal
