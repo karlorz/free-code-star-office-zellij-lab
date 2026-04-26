@@ -39,16 +39,30 @@ export class StarOfficeClient {
 
     for (let attempt = 0; attempt < maxRetries; attempt++) {
       try {
-        const response = await fetch(`${this.baseUrl}${path}`, {
-          method: "POST",
-          headers: {
-            "content-type": "application/json",
-          },
-          body: JSON.stringify(body),
-          signal: AbortSignal.timeout(5000),
-        });
+        // Single AbortController covers both header fetch and body read
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 5000);
+
+        let response: Response;
+        try {
+          response = await fetch(`${this.baseUrl}${path}`, {
+            method: "POST",
+            headers: {
+              "content-type": "application/json",
+            },
+            body: JSON.stringify(body),
+            signal: controller.signal,
+          });
+        } catch (err) {
+          clearTimeout(timeoutId);
+          if (controller.signal.aborted) {
+            throw new DOMException("The operation was aborted due to timeout", "TimeoutError");
+          }
+          throw err;
+        }
 
         const text = await response.text();
+        clearTimeout(timeoutId);
 
         if (!response.ok) {
           // Non-retryable client errors (4xx except 429, 408, 421)
@@ -72,9 +86,9 @@ export class StarOfficeClient {
         }
       }
 
-      // Exponential backoff: 1s, 2s, 4s (skip on last attempt)
+      // Exponential backoff with jitter: base * 2^attempt * (0.5 + random * 0.5)
       if (attempt < maxRetries - 1) {
-        const delayMs = baseDelayMs * Math.pow(2, attempt);
+        const delayMs = baseDelayMs * Math.pow(2, attempt) * (0.5 + Math.random() * 0.5);
         await Bun.sleep(delayMs);
       }
     }
