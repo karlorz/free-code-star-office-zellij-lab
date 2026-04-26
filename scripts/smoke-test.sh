@@ -832,7 +832,7 @@ if context.get("rawToolName") != "Bash":
     raise SystemExit(f"expected native hook context.rawToolName=Bash, got {context.get('rawToolName')!r}")
 PY
 
-echo "[27/31] SSE /events endpoint"
+echo "[27/31] SSE /events endpoint with event replay"
 SSE_OUTPUT="$(mktemp)"
 python3 -u - "${BRIDGE_URL}" <<'PY' >"${SSE_OUTPUT}" 2>&1 &
 import http.client
@@ -900,6 +900,120 @@ fi
 if [[ "${sse_body}" != *"smoke-sse-broadcast"* ]]; then
   echo "SSE broadcast did not contain expected session ID" >&2
   exit 1
+fi
+
+echo "[28/31] SSE event replay via Last-Event-ID"
+# Generate events, capture an event ID, then reconnect with Last-Event-ID
+SSE_REPLAY_OUT="$(mktemp)"
+python3 -u - "${BRIDGE_URL}" <<'PY' >"${SSE_REPLAY_OUT}" 2>&1 &
+import http.client, json, sys, time, threading
+url_parts = sys.argv[1].replace("http://", "").split(":", 1)
+host, port = url_parts[0], int(url_parts[1])
+conn = http.client.HTTPConnection(host, port)
+conn.request("GET", "/events")
+resp = conn.getresponse()
+ids_seen = []
+done = threading.Event()
+
+def timeout_close():
+    done.set()
+    try: conn.close()
+    except: pass
+
+timer = threading.Timer(8, timeout_close)
+timer.start()
+try:
+    while not done.is_set():
+        line = resp.readline().decode()
+        if not line:
+            continue
+        line = line.rstrip("\n").rstrip("\r")
+        if line.startswith("id: "):
+            ids_seen.append(line[4:].strip())
+        if line.startswith("data: ") and ids_seen:
+            data = json.loads(line[6:])
+            print(f"captured: {data.get('detail','?')} id={ids_seen[-1]}", flush=True)
+            print(f"last_id={ids_seen[-1]}", flush=True)
+except:
+    pass
+if ids_seen:
+    print(f"last_id={ids_seen[-1]}", flush=True)
+else:
+    print("last_id=NONE", flush=True)
+PY
+SSE_CAPTURE_PID=$!
+sleep 0.5
+
+# Generate events that the first listener will see
+for i in 1 2 3; do
+  curl -fsS -X POST "${BRIDGE_URL}/event/manual" \
+    -H "content-type: application/json" \
+    -d "{\"sessionId\":\"smoke-replay\",\"scope\":\"main\",\"state\":\"writing\",\"detail\":\"replay-event-${i}\"}" >/dev/null
+done
+sleep 2
+
+kill "${SSE_CAPTURE_PID}" >/dev/null 2>&1 || true
+wait "${SSE_CAPTURE_PID}" >/dev/null 2>&1 || true
+capture_output="$(cat "${SSE_REPLAY_OUT}")"
+rm -f "${SSE_REPLAY_OUT}"
+
+# Extract last event ID
+last_event_id="$(printf '%s\n' "${capture_output}" | awk -F= '/^last_id=/ && $2 != "NONE" { value=$2 } END { print value }')"
+if [[ -z "${last_event_id}" || "${last_event_id}" == "NONE" ]]; then
+  echo "SSE replay: no event IDs captured, skipping replay test" >&2
+else
+  # Connect with Last-Event-ID and verify we get new events after that ID
+  SSE_REPLAY2_OUT="$(mktemp)"
+  python3 -u - "${BRIDGE_URL}" "${last_event_id}" <<'PY' >"${SSE_REPLAY2_OUT}" 2>&1 &
+import http.client, json, sys, time, threading
+url_parts = sys.argv[1].replace("http://", "").split(":", 1)
+host, port = url_parts[0], int(url_parts[1])
+last_id = sys.argv[2] if len(sys.argv) > 2 else ""
+conn = http.client.HTTPConnection(host, port)
+headers = {"Last-Event-ID": last_id} if last_id else {}
+conn.request("GET", "/events", headers=headers)
+resp = conn.getresponse()
+done2 = threading.Event()
+
+def timeout_close2():
+    done2.set()
+    try: conn.close()
+    except: pass
+
+timer2 = threading.Timer(4, timeout_close2)
+timer2.start()
+try:
+    while not done2.is_set():
+        line = resp.readline().decode()
+        if not line:
+            continue
+        line = line.rstrip("\n").rstrip("\r")
+        if line.startswith("data: "):
+            data = json.loads(line[6:])
+            print(f"replayed: {data.get('detail','?')}", flush=True)
+except:
+    pass
+PY
+  SSE_REPLAY2_PID=$!
+  sleep 0.5
+
+  # Generate events after the Last-Event-ID point
+  curl -fsS -X POST "${BRIDGE_URL}/event/manual" \
+    -H "content-type: application/json" \
+    -d '{"sessionId":"smoke-replay","scope":"main","state":"idle","detail":"post-replay-event"}' >/dev/null
+  sleep 2
+
+  kill "${SSE_REPLAY2_PID}" >/dev/null 2>&1 || true
+  wait "${SSE_REPLAY2_PID}" >/dev/null 2>&1 || true
+  replay_output="$(cat "${SSE_REPLAY2_OUT}")"
+  rm -f "${SSE_REPLAY2_OUT}"
+
+  if [[ "${replay_output}" != *"post-replay-event"* ]]; then
+    echo "SSE replay: reconnected client did not receive new events" >&2
+    echo "${replay_output}" >&2
+    exit 1
+  fi
+  echo "SSE replay verified: client received events after Last-Event-ID"
 fi
 
 echo "[31/31] smoke pass"

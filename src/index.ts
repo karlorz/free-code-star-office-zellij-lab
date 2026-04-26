@@ -12,7 +12,9 @@ import type {
   NormalizedSignal,
 } from "./types";
 
+const SSE_REPLAY_CAPACITY = 64;
 const sseClients = new Set<ReadableStreamDefaultController>();
+const sseEventLog: { id: string; event: string; payload: unknown }[] = [];
 const encoder = new TextEncoder();
 
 function formatSSE(data: unknown, event?: string, id?: string): Uint8Array {
@@ -25,7 +27,11 @@ function formatSSE(data: unknown, event?: string, id?: string): Uint8Array {
 }
 
 function broadcastSSE(event: string, payload: unknown): void {
-  const message = formatSSE(payload, event, randomUUID());
+  const id = randomUUID();
+  const entry = { id, event, payload };
+  sseEventLog.push(entry);
+  if (sseEventLog.length > SSE_REPLAY_CAPACITY) sseEventLog.shift();
+  const message = formatSSE(payload, event, id);
   for (const controller of sseClients) {
     try {
       controller.enqueue(message);
@@ -170,9 +176,24 @@ const server = Bun.serve({
 
     if (request.method === "GET" && url.pathname === "/events") {
       server.timeout(request, 0);
+      const lastEventId = request.headers.get("Last-Event-ID");
       const stream = new ReadableStream({
         start(controller) {
           sseClients.add(controller);
+          // Replay recent events to new clients if they send Last-Event-ID
+          if (lastEventId) {
+            const replayIndex = sseEventLog.findIndex((e) => e.id === lastEventId);
+            if (replayIndex !== -1) {
+              for (const entry of sseEventLog.slice(replayIndex + 1)) {
+                try {
+                  controller.enqueue(formatSSE(entry.payload, entry.event, entry.id));
+                } catch {
+                  sseClients.delete(controller);
+                  return;
+                }
+              }
+            }
+          }
           request.signal.addEventListener("abort", () => {
             sseClients.delete(controller);
             try {
