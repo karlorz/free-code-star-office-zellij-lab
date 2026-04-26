@@ -12,9 +12,10 @@ import type {
 } from "./types";
 
 const SSE_REPLAY_CAPACITY = 64;
+const SSE_MAX_BUFFERED_MESSAGES = 32; // Drop clients with more than this many buffered messages
 let sseEventSeq = 0;
 let sseClientSeq = 0;
-const sseClients = new Map<number, ReadableStreamDefaultController>();
+const sseClients = new Map<number, { controller: ReadableStreamDefaultController; buffered: number }>();
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
@@ -40,9 +41,19 @@ function broadcastSSE(event: string, payload: unknown): number {
   sseEventLog.push(entry);
   if (sseEventLog.length > SSE_REPLAY_CAPACITY) sseEventLog.shift();
   const message = formatSSE(payload, event, id);
-  for (const [cid, controller] of sseClients) {
+  for (const [cid, client] of sseClients) {
     try {
-      controller.enqueue(message);
+      client.controller.enqueue(message);
+      client.buffered++;
+      // Check backpressure: drop slow clients
+      if (client.buffered > SSE_MAX_BUFFERED_MESSAGES) {
+        console.warn(`[bridge] dropping slow SSE client ${cid} (${client.buffered} buffered messages)`);
+        try {
+          client.controller.enqueue(formatSSE({ reason: "backpressure", bufferedMessages: client.buffered }, "backpressure"));
+          client.controller.close();
+        } catch {}
+        sseClients.delete(cid);
+      }
     } catch {
       sseClients.delete(cid);
     }
@@ -207,9 +218,11 @@ async function processSignal(
 
 const keepAliveInterval = setInterval(() => {
   const ping = encoder.encode(": ping\n\n");
-  for (const [cid, controller] of sseClients) {
+  for (const [cid, client] of sseClients) {
     try {
-      controller.enqueue(ping);
+      client.controller.enqueue(ping);
+      // Reset buffer counter on successful ping — client is keeping up
+      client.buffered = 0;
     } catch {
       sseClients.delete(cid);
     }
@@ -224,10 +237,10 @@ async function gracefulShutdown(signal: string): Promise<void> {
   console.log(`[bridge] received ${signal}, draining ${sseClients.size} SSE clients...`);
 
   const shutdownMessage = formatSSE({ shutdown: true, reason: signal }, "shutdown");
-  for (const [cid, controller] of sseClients) {
+  for (const [cid, client] of sseClients) {
     try {
-      controller.enqueue(shutdownMessage);
-      controller.close();
+      client.controller.enqueue(shutdownMessage);
+      client.controller.close();
     } catch {}
   }
   sseClients.clear();
@@ -278,7 +291,7 @@ async function handleRequest(request: Request, url: URL): Promise<Response> {
       const clientId = ++sseClientSeq;
       const stream = new ReadableStream({
         start(controller) {
-          sseClients.set(clientId, controller);
+          sseClients.set(clientId, { controller, buffered: 0 });
           // Notify other clients about new connection
           broadcastSSE("client_connected", { clientId, totalClients: sseClients.size });
           // Send full snapshot on connect so new clients have current state
