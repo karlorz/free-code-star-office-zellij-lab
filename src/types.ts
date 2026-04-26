@@ -72,6 +72,12 @@ export interface SignalContext {
   zellijTabCount?: number;
   zellijFocusedTitles?: string[];
   zellijActiveTab?: string;
+  zellijTerminalCommand?: string;
+  zellijExitStatus?: number | null;
+  zellijIsHeld?: boolean;
+  zellijIsFloating?: boolean;
+  zellijClientCount?: number;
+  zellijTabNames?: string[];
 }
 
 export interface NormalizedSignal {

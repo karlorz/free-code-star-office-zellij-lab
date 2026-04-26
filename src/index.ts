@@ -359,6 +359,14 @@ const server = Bun.serve({
           state = "executing";
           detail = `cwd_change: ${cwd}`;
           break;
+        case "pane_exit":
+          state = "idle";
+          detail = `pane_exit: exit=${body.exit_status ?? "?"} held=${body.is_held ?? "?"}`;
+          break;
+        case "client_update":
+          state = "syncing";
+          detail = `client_update: ${body.client_count ?? "?"} clients`;
+          break;
         default:
           state = "syncing";
           detail = zellijEvent;
@@ -379,6 +387,12 @@ const server = Bun.serve({
           zellijTabCount: body.tab_count != null ? Number(body.tab_count) : undefined,
           zellijFocusedTitles: Array.isArray(body.focused_titles) ? body.focused_titles.map(String) : undefined,
           zellijActiveTab: typeof body.active_tab === "string" ? body.active_tab : undefined,
+          zellijTerminalCommand: typeof body.terminal_command === "string" ? body.terminal_command : undefined,
+          zellijExitStatus: body.exit_status != null ? Number(body.exit_status) : (body.exit_status === null ? null : undefined),
+          zellijIsHeld: typeof body.is_held === "boolean" ? body.is_held : undefined,
+          zellijIsFloating: typeof body.is_floating === "boolean" ? body.is_floating : undefined,
+          zellijClientCount: body.client_count != null ? Number(body.client_count) : undefined,
+          zellijTabNames: Array.isArray(body.tabs) ? body.tabs.map(String) : undefined,
         },
       };
 
