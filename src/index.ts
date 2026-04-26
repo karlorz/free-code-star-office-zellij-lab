@@ -56,6 +56,7 @@ const metrics = {
   wsDisconnects: 0,
   wsMessages: 0,
   wsClientsCurrent: 0,
+  dedupEvicted: 0,
   startTime: Date.now(),
 };
 
@@ -448,6 +449,13 @@ function buildPrometheusMetrics(): string {
   lines.push(`# HELP bridge_pending_websockets Number of active WebSocket connections`);
   lines.push(`# TYPE bridge_pending_websockets gauge`);
   lines.push(`bridge_pending_websockets ${server.pendingWebSockets}`);
+  // Dedup map metrics
+  lines.push(`# HELP bridge_dedup_entries Current number of dedup keys tracked`);
+  lines.push(`# TYPE bridge_dedup_entries gauge`);
+  lines.push(`bridge_dedup_entries ${dedupCounts.size}`);
+  lines.push(`# HELP bridge_dedup_evicted_total Total dedup entries evicted by TTL`);
+  lines.push(`# TYPE bridge_dedup_evicted_total counter`);
+  lines.push(`bridge_dedup_evicted_total ${metrics.dedupEvicted}`);
   // HTTP request duration histograms
   lines.push(`# HELP bridge_http_request_duration_milliseconds HTTP request latency in milliseconds`);
   lines.push(`# TYPE bridge_http_request_duration_milliseconds histogram`);
@@ -624,6 +632,7 @@ const sweeperInterval = setInterval(() => {
       dedupCounts.delete(key);
       lastSignalByKey.delete(key);
       evictedByTtl++;
+      metrics.dedupEvicted++;
     }
   }
   if (sseClients.size > 0 || sseEventLog.length > 0 || evictedByTtl > 0) {
@@ -1219,7 +1228,7 @@ setInterval(()=>{fetch("/status").then(r=>r.json()).then(d=>{
     if (request.method === "GET" && url.pathname === "/help") {
       return json({
         ok: true,
-        version: "0.25.0",
+        version: "0.26.0",
         routes: ROUTE_TABLE,
       });
     }
@@ -1227,7 +1236,7 @@ setInterval(()=>{fetch("/status").then(r=>r.json()).then(d=>{
     if (request.method === "GET" && url.pathname === "/version") {
       return json({
         ok: true,
-        version: "0.25.0",
+        version: "0.26.0",
         runtime: `bun ${Bun.version}`,
         arch: process.arch,
         platform: process.platform,
@@ -2137,7 +2146,7 @@ setInterval(()=>{fetch("/status").then(r=>r.json()).then(d=>{
       } catch {}
       return json({
         ok: true,
-        version: "0.25.0",
+        version: "0.26.0",
         runtime: `bun ${Bun.version}`,
         arch: process.arch,
         platform: process.platform,
