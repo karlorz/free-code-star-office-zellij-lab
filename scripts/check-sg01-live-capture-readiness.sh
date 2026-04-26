@@ -153,6 +153,18 @@ else
   status "claude" "missing"
 fi
 
+if [[ -n "${ANTHROPIC_API_KEY:-}" ]]; then
+  status "claude auth" "ANTHROPIC_API_KEY set"
+elif [[ -n "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]]; then
+  status "claude auth" "CLAUDE_CODE_OAUTH_TOKEN set"
+elif [[ -n "${CLAUDE_CODE_API_KEY_HELPER:-}" ]]; then
+  status "claude auth" "CLAUDE_CODE_API_KEY_HELPER set"
+elif [[ -f "${HOME}/.claude.json" ]] && grep -q 'hasCompletedOnboarding' "${HOME}/.claude.json" 2>/dev/null; then
+  status "claude auth" "onboarding marker present; credential env not set"
+else
+  status "claude auth" "missing"
+fi
+
 if has_command free-code; then
   FREE_CODE_PRESENT="true"
   status "free-code" "$(free-code --version 2>/dev/null | head -n 1 || command -v free-code)"
@@ -180,7 +192,11 @@ if [[ -d "${LAB_ROOT}" ]]; then
 fi
 
 if [[ "${CLAUDE_PRESENT}" == "true" || "${FREE_CODE_PRESENT}" == "true" ]]; then
-  status "next runtime need" "runtime present; run focused live capture when ready"
+  if [[ -n "${ANTHROPIC_API_KEY:-}" || -n "${CLAUDE_CODE_OAUTH_TOKEN:-}" || -n "${CLAUDE_CODE_API_KEY_HELPER:-}" ]]; then
+    status "next runtime need" "runtime and auth present; run focused live capture when ready"
+  else
+    status "next runtime need" "set ANTHROPIC_API_KEY, CLAUDE_CODE_OAUTH_TOKEN, or CLAUDE_CODE_API_KEY_HELPER before live capture"
+  fi
 else
   status "next runtime need" "install/configure claude or free-code before live hook capture"
 fi
@@ -237,6 +253,13 @@ claude_value="$(value_for "claude")"
 free_code_value="$(value_for "free-code")"
 if [[ "${claude_value}" == missing* && "${free_code_value}" == missing* ]]; then
   blockers+=("runtime: claude and free-code are both missing")
+fi
+
+claude_auth_value="$(value_for "claude auth")"
+if [[ "${claude_value}" != missing* && ( "${claude_auth_value}" == missing* || -z "${claude_auth_value}" ) ]]; then
+  blockers+=("claude auth: ${claude_auth_value:-missing}")
+elif [[ "${claude_auth_value}" == onboarding* ]]; then
+  blockers+=("claude auth: credential env not set")
 fi
 
 zellij_session_value="$(value_for "zellij session ${ZELLIJ_SESSION_NAME}")"
@@ -312,7 +335,7 @@ if [[ -n "${REPORT_PATH}" ]]; then
     if (( ${#blockers[@]} == 0 )); then
       echo "Run the next focused live capture batch from a tmux session inside Zellij web, then inspect the generated artifact report."
     else
-      echo "Resolve the listed blockers, then rerun this checker before attempting CAPTURE_BATCH=safe-lifecycle."
+      echo "Resolve the listed blockers without pasting secrets into git or shell history, then rerun this checker before attempting CAPTURE_BATCH=safe-lifecycle."
     fi
   } >"${REPORT_PATH}"
   echo "[sg01-readiness] report: ${REPORT_PATH}"
