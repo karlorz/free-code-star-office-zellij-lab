@@ -90,7 +90,7 @@ _connect_attempt=0
 # Reconnection loop with exponential backoff
 while [[ "$_running" == "true" ]]; do
   # Re-discover pane IDs on each reconnect (session layout may have changed)
-  if [[ -z "$SUBSCRIBE_PANE_IDS" ]]; then
+  if [[ -z "${SUBSCRIBE_PANE_IDS:-}" ]]; then
     PANE_IDS="$(ZELLIJ_SESSION_NAME="$SESSION_NAME" zellij action list-panes --json 2>/dev/null \
       | python3 -c '
     import json, sys
