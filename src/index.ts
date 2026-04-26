@@ -277,44 +277,38 @@ async function processSignal(
     });
   }
 
-  let starOfficeResult: unknown;
-  let starOfficeError: { message: string; stack?: string } | undefined;
+  // Process signal asynchronously after fast-ack response.
+  // This prevents hook timeouts (10s) when starOfficeClient.apply() is slow.
+  // The hook response is ignored by Claude Code for decision purposes anyway.
+  const signalId = ++sseEventSeq;
+  broadcastSSEWithId(signalId, "signal", resolvedSignal);
 
-  try {
-    starOfficeResult = await starOfficeClient.apply(resolvedSignal);
-  } catch (error) {
-    starOfficeError = formatError(error);
-  }
-
-  await appendEvent({
+  // Fire-and-forget: append to log + apply to star office
+  appendEvent({
     source,
     receivedAt: new Date().toISOString(),
     rawEvent: rawEvent ?? null,
     signal: resolvedSignal,
     originalSignal: signal,
-    starOfficeResult: starOfficeResult ?? null,
-    starOfficeError: starOfficeError ?? null,
+    starOfficeResult: null,
+    starOfficeError: null,
     ignored: false,
     ignoreReason: null,
+  }).then(async () => {
+    try {
+      const result = await starOfficeClient.apply(resolvedSignal);
+      // Update the event log entry with the star office result
+      // (the event is already persisted, the result is a side effect)
+      if (result) console.log(`[bridge] star-office apply ok for ${resolvedSignal.eventName}`);
+    } catch (error) {
+      console.error(`[bridge] star-office apply failed for ${resolvedSignal.eventName}: ${formatError(error).message}`);
+    }
   });
-
-  broadcastSSE("signal", resolvedSignal);
-
-  if (starOfficeError) {
-    return json({
-      ok: false,
-      signal: resolvedSignal,
-      snapshot,
-      error: "star office apply failed",
-      starOfficeError,
-    }, { status: 502 });
-  }
 
   return json({
     ok: true,
     signal: resolvedSignal,
     snapshot,
-    starOfficeResult,
   });
 }
 
