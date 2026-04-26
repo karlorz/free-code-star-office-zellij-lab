@@ -17,7 +17,7 @@ const SSE_MAX_BUFFERED_MESSAGES = 32; // Drop clients with more than this many b
 let sseEventSeq = 0;
 let sseClientSeq = 0;
 const sseClients = new Map<number, { controller: ReadableStreamDefaultController; buffered: number; connectedAt: number }>();
-const BRIDGE_VERSION = "0.62.0";
+const BRIDGE_VERSION = "0.63.0";
 
 // Shared environment for zellij CLI subprocess calls
 function zellijEnv(session?: string): Record<string, string | undefined> {
@@ -82,6 +82,8 @@ const metrics = {
   zellijRecoverySuccesses: 0,
   wsClientTimeouts: 0,      // zombie connections cleaned up by heartbeat
   wsBackpressureDrops: 0,   // slow clients dropped by backpressureLimit
+  zellijSaveSuccesses: 0,  // periodic save-session IPC successes
+  zellijSaveFailures: 0,   // periodic save-session IPC failures
   startTime: Date.now(),
 };
 
@@ -520,6 +522,12 @@ function buildPrometheusMetrics(): string {
   lines.push(`# HELP bridge_zellij_recovery_successes_total Total successful zellij session recoveries`);
   lines.push(`# TYPE bridge_zellij_recovery_successes_total counter`);
   lines.push(`bridge_zellij_recovery_successes_total ${metrics.zellijRecoverySuccesses}`);
+  lines.push(`# HELP bridge_zellij_save_successes_total Periodic save-session IPC successes`);
+  lines.push(`# TYPE bridge_zellij_save_successes_total counter`);
+  lines.push(`bridge_zellij_save_successes_total ${metrics.zellijSaveSuccesses}`);
+  lines.push(`# HELP bridge_zellij_save_failures_total Periodic save-session IPC failures`);
+  lines.push(`# TYPE bridge_zellij_save_failures_total counter`);
+  lines.push(`bridge_zellij_save_failures_total ${metrics.zellijSaveFailures}`);
   lines.push(`# HELP bridge_ws_client_timeouts_total WebSocket connections closed by heartbeat zombie detection`);
   lines.push(`# TYPE bridge_ws_client_timeouts_total counter`);
   lines.push(`bridge_ws_client_timeouts_total ${metrics.wsClientTimeouts}`);
@@ -887,12 +895,16 @@ const zellijHealthInterval = setInterval(async () => {
 
 // Periodic save-session via IPC: trigger zellij serialization every 60s
 // to keep resurrection data fresh. Only runs when session is healthy.
+let zellijLastSaveAt: number | null = null;
 const zellijSaveInterval = setInterval(async () => {
   if (isShuttingDown || metrics.zellijSessionHealthy === 0) return;
   const session = config.zellijSessionName || "main";
   try {
     await ipcSendAction(session, "save-session");
+    metrics.zellijSaveSuccesses++;
+    zellijLastSaveAt = Date.now();
   } catch {
+    metrics.zellijSaveFailures++;
     // Non-critical — session will auto-serialize periodically anyway
   }
 }, 60_000);
@@ -1432,6 +1444,9 @@ async function handleRequest(request: Request, url: URL): Promise<Response> {
         zellijRecoveryAttempts: metrics.zellijRecoveryAttempts,
         zellijRecoverySuccesses: metrics.zellijRecoverySuccesses,
         zellijLastRecoveryAttempt: zellijLastRecoveryAttempt || null,
+        zellijSaveSuccesses: metrics.zellijSaveSuccesses,
+        zellijSaveFailures: metrics.zellijSaveFailures,
+        zellijLastSaveAt: zellijLastSaveAt || null,
         isShuttingDown,
       });
     }
