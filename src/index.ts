@@ -267,8 +267,9 @@ async function handleRequest(request: Request, url: URL): Promise<Response> {
             if (!isNaN(requestedId)) {
               const replayIndex = sseEventLog.findIndex((e) => e.id === requestedId);
               if (replayIndex !== -1) {
-                // Found the event — replay everything after it
+                // Found the event — replay everything after it (skip ephemeral client events)
                 for (const entry of sseEventLog.slice(replayIndex + 1)) {
+                  if (entry.event === "client_connected" || entry.event === "client_disconnected") continue;
                   try {
                     controller.enqueue(formatSSE(entry.payload, entry.event, entry.id));
                   } catch {
