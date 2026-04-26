@@ -83,6 +83,12 @@ export interface SignalContext {
   zellijViewportHash?: string;
   zellijLastLine?: string;
   zellijWebStatus?: string;
+  _bridge?: {
+    zellijSessionHealthy: boolean;
+    zellijHealthFailures: number;
+    zellijRecoveryAttempts: number;
+    zellijRecoverySuccesses: number;
+  };
 }
 
 export interface NormalizedSignal {

@@ -17,7 +17,7 @@ const SSE_MAX_BUFFERED_MESSAGES = 32; // Drop clients with more than this many b
 let sseEventSeq = 0;
 let sseClientSeq = 0;
 const sseClients = new Map<number, { controller: ReadableStreamDefaultController; buffered: number; connectedAt: number }>();
-const BRIDGE_VERSION = "0.52.0";
+const BRIDGE_VERSION = "0.53.0";
 
 // Shared environment for zellij CLI subprocess calls
 function zellijEnv(session?: string): Record<string, string | undefined> {
@@ -637,6 +637,16 @@ async function processSignal(
   }
 
   metrics.signalsProcessed++;
+  // Enrich signal with bridge operational context before broadcast
+  resolvedSignal.context = {
+    ...resolvedSignal.context,
+    _bridge: {
+      zellijSessionHealthy: metrics.zellijSessionHealthy === 1,
+      zellijHealthFailures: metrics.zellijHealthConsecutiveFailures,
+      zellijRecoveryAttempts: metrics.zellijRecoveryAttempts,
+      zellijRecoverySuccesses: metrics.zellijRecoverySuccesses,
+    },
+  };
   // Process signal asynchronously after fast-ack response.
   // This prevents hook timeouts (10s) when starOfficeClient.apply() is slow.
   // The hook response is ignored by Claude Code for decision purposes anyway.
@@ -705,6 +715,8 @@ try {
 } catch {}
 
 // Periodic sweeper: prune stale dedup entries and log summary
+// Only logs when state changed since last sweep (clients, events, dedup keys)
+let lastSweepSnapshot = { clients: 0, events: 0, dedupKeys: 0 };
 const sweeperInterval = setInterval(() => {
   const now = Date.now();
   let evictedByTtl = 0;
@@ -717,9 +729,14 @@ const sweeperInterval = setInterval(() => {
       metrics.dedupEvicted++;
     }
   }
-  if (sseClients.size > 0 || sseEventLog.length > 0 || evictedByTtl > 0) {
-    console.log(`[bridge] sweep: ${sseClients.size} clients, ${sseEventLog.length} events, ${dedupCounts.size} dedup keys${evictedByTtl ? `, evicted ${evictedByTtl} by TTL` : ""}, seq=${sseEventSeq}`);
+  const snapshot = { clients: sseClients.size, events: sseEventLog.length, dedupKeys: dedupCounts.size };
+  const changed = snapshot.clients !== lastSweepSnapshot.clients
+    || snapshot.events !== lastSweepSnapshot.events
+    || snapshot.dedupKeys !== lastSweepSnapshot.dedupKeys;
+  if (changed || evictedByTtl > 0) {
+    console.log(`[bridge] sweep: ${snapshot.clients} clients, ${snapshot.events} events, ${snapshot.dedupKeys} dedup keys${evictedByTtl ? `, evicted ${evictedByTtl} by TTL` : ""}, seq=${sseEventSeq}`);
   }
+  lastSweepSnapshot = snapshot;
   // Alert dedup cleanup: entries older than ALERT_DEDUP_TTL_MS
   for (const [key, ts] of alertDedup) {
     if (now - ts > ALERT_DEDUP_TTL_MS) alertDedup.delete(key);
@@ -1105,6 +1122,22 @@ const server = Bun.serve({
         case "ping":
           ws.send(JSON.stringify({ type: "pong", ts: Date.now() }));
           break;
+        case "recover": {
+          // Manual zellij session recovery via WebSocket
+          if (metrics.zellijSessionHealthy === 1) {
+            ws.send(JSON.stringify({ type: "recover_result", ok: true, recovered: false, reason: "session already healthy" }));
+            break;
+          }
+          zellijLastRecoveryAttempt = 0; // reset cooldown
+          try {
+            const session = config.zellijSessionName || "main";
+            const success = await attemptZellijRecovery(session);
+            ws.send(JSON.stringify({ type: "recover_result", ok: true, recovered: success, session }));
+          } catch (err) {
+            ws.send(JSON.stringify({ type: "recover_result", ok: false, error: err instanceof Error ? err.message : String(err) }));
+          }
+          break;
+        }
         case "action": {
           // Execute a Zellij action via WebSocket (same logic as POST /action)
           const action = typeof parsed.action === "string" ? parsed.action : "";
@@ -1242,6 +1275,13 @@ async function handleRequest(request: Request, url: URL): Promise<Response> {
         externalURL: body.externalURL,
         groupKey: body.groupKey,
         receiver: body.receiver,
+        _bridge: {
+          zellijSessionHealthy: metrics.zellijSessionHealthy === 1,
+          zellijHealthFailures: metrics.zellijHealthConsecutiveFailures,
+          zellijRecoveryAttempts: metrics.zellijRecoveryAttempts,
+          zellijRecoverySuccesses: metrics.zellijRecoverySuccesses,
+          zellijLastRecoveryAttempt: zellijLastRecoveryAttempt || null,
+        },
       };
       broadcastSSE("alert", summary);
       metrics.alertsReceived++;

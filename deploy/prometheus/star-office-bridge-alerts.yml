@@ -212,6 +212,19 @@ groups:
             {{ $value }} dedup keys tracked. TTL eviction may not be keeping up
             or signal source diversity is unusually high.
 
+      # WARNING: High dedup eviction rate — TTL too short for signal diversity
+      - alert: BridgeHighDedupEviction
+        expr: rate(bridge_dedup_evicted_total[5m]) > 5
+        for: 5m
+        labels:
+          severity: warning
+          service: star-office-bridge
+        annotations:
+          summary: "High dedup eviction rate on {{ $labels.instance }}"
+          description: >-
+            {{ $value | printf "%.1f" }} dedup keys evicted/sec. TTL may be too
+            short for signal source diversity, causing duplicate leaks.
+
       # WARNING: Request saturation — bridge may be overloaded
       - alert: BridgeRequestSaturation
         expr: bridge_pending_requests > 50
