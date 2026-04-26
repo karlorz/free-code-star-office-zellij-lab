@@ -621,13 +621,13 @@ const server = Bun.serve({
   websocket: {
     open(ws) {
       const data = ws.data as unknown as { authenticated: boolean; connectedAt: number; sessionId?: string };
-      console.log(`[bridge] ws client connected authed=${data.authenticated} session=${data.sessionId || "none"}`);
+      console.log(`[bridge] ws client connected authed=${data.authenticated} session=${data.sessionId || "none"} total=${server.subscriberCount("bridge-events") + 1}`);
       metrics.wsConnections++;
       // Subscribe to the event broadcast channel
       ws.subscribe("bridge-events");
-      // Send initial snapshot
+      // Send initial snapshot with connection metadata
       const snapshot = registry.list();
-      ws.send(JSON.stringify({ type: "snapshot", data: snapshot }));
+      ws.send(JSON.stringify({ type: "snapshot", data: snapshot, connectedAt: data.connectedAt, authenticated: data.authenticated }));
     },
     async message(ws, message) {
       const data = ws.data as unknown as { authenticated: boolean };
@@ -699,8 +699,9 @@ const server = Bun.serve({
       }
     },
     close(ws, code, reason) {
-      const data = ws.data as unknown as { sessionId?: string };
-      console.log(`[bridge] ws client disconnected code=${code} session=${data.sessionId || "none"}`);
+      const data = ws.data as unknown as { sessionId?: string; connectedAt: number };
+      const connDuration = data.connectedAt ? ((Date.now() - data.connectedAt) / 1000).toFixed(1) : "?";
+      console.log(`[bridge] ws client disconnected code=${code} session=${data.sessionId || "none"} duration=${connDuration}s`);
       ws.unsubscribe("bridge-events");
     },
   },
