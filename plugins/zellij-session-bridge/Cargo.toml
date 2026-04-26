@@ -3,15 +3,11 @@ name = "zellij-session-bridge"
 version = "0.1.0"
 edition = "2021"
 
-[lib]
-crate-type = ["cdylib"]
-
 [dependencies]
 zellij-tile = "0.44.1"
 
 [profile.release]
 lto = true
-strip = true
 codegen-units = 1
 opt-level = "z"
 panic = "abort"
