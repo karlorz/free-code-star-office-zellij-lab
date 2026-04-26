@@ -1,6 +1,9 @@
 [Unit]
 Description=Star Office Bridge - Bun HTTP server for Zellij/Claude event routing
 After=network.target
+# Prevent restart storms: permanently fail after 5 restarts in 300s
+StartLimitBurst=5
+StartLimitIntervalSec=300s
 
 [Service]
 Type=notify
@@ -26,9 +29,6 @@ Restart=on-failure
 RestartSec=5s
 RestartSteps=4
 RestartMaxDelaySec=160s
-# Prevent restart storms: permanently fail after 5 restarts in 300s
-StartLimitBurst=5
-StartLimitIntervalSec=300s
 UMask=0077
 
 # Graceful shutdown: give 30s for server.stop() + SSE drain before SIGKILL
