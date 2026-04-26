@@ -391,11 +391,13 @@ const ALLOWED_ACTIONS = new Set([
   "toggle-fullscreen", "toggle-pane-embed-or-floating", "toggle-floating-panes",
   "show-floating-panes", "hide-floating-panes",
   "move-focus", "move-focus-or-tab", "resize",
-  "write", "write-chars", "switch-mode",
+  "write", "write-chars", "send-keys", "paste", "switch-mode",
   "dump-screen", "dump-layout", "current-tab-info",
   "start-or-reload-plugin", "launch-or-focus-plugin",
   "list-clients", "list-panes", "list-tabs",
-  "subscribe",
+  "subscribe", "pipe",
+  "scroll-up", "scroll-down", "scroll-up-half", "scroll-down-half", "scroll-to-top", "scroll-to-bottom",
+  "detach", "switch-session", "rename-session", "save-session",
   "web --status", "web --create-token", "web --create-read-only-token", "web --revoke-token",
 ]);
 
