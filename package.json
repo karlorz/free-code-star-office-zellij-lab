@@ -7,7 +7,8 @@
   "packageManager": "bun@1.3.11",
   "scripts": {
     "dev": "bun run src/index.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "check:secrets": "bash scripts/check-no-secrets.sh"
   },
   "devDependencies": {
     "@types/bun": "^1.3.11",
