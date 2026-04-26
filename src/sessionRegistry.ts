@@ -179,4 +179,8 @@ export class SessionRegistry {
       return b.updatedAt.localeCompare(a.updatedAt);
     });
   }
+
+  get(sessionId: string): SessionSnapshot | undefined {
+    return this.sessions.get(sessionId);
+  }
 }

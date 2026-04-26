@@ -255,6 +255,21 @@ const server = Bun.serve({
       });
     }
 
+    if (request.method === "GET" && url.pathname.startsWith("/sessions/")) {
+      const sessionId = decodeURIComponent(url.pathname.slice("/sessions/".length));
+      if (!sessionId) {
+        return json({ ok: false, error: "missing session id" }, { status: 400 });
+      }
+      const snapshot = registry.get(sessionId);
+      if (!snapshot) {
+        return json({ ok: false, error: "session not found" }, { status: 404 });
+      }
+      return json({
+        ok: true,
+        session: snapshot,
+      });
+    }
+
     if (request.method === "GET" && url.pathname === "/events/recent") {
       const afterId = url.searchParams.get("after_id") || undefined;
       let events = sseEventLog;
