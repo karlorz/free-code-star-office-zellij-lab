@@ -33,6 +33,7 @@ last_pane_count=0
 last_tab_count=0
 last_active_tab=''
 last_focused_titles=''
+last_focused_cwd=''
 
 post_event() {
   local json_body="$1"
@@ -53,9 +54,20 @@ d = json.load(sys.stdin)
 titles = [p["title"] for p in d if not p.get("is_plugin") and p.get("is_focused")]
 print(json.dumps(titles))
 ' 2>/dev/null || echo '[]')"
+  focused_cwd="$(echo "$pane_json" | python3 -c '
+import json, sys
+d = json.load(sys.stdin)
+for p in d:
+    if not p.get("is_plugin") and p.get("is_focused"):
+        print(p.get("pane_cwd",""))
+        break
+else:
+    print("")
+' 2>/dev/null || echo '')"
   last_pane_count="$pane_count"
   last_focused_titles="$focused"
-  post_event "{\"hook_event_name\":\"FileChanged\",\"session_id\":\"zellij-monitor\",\"cwd\":\"/\",\"zellij_event\":\"pane_update\",\"total_panes\":$pane_count,\"focused_titles\":$focused}"
+  last_focused_cwd="$focused_cwd"
+  post_event "{\"hook_event_name\":\"FileChanged\",\"session_id\":\"zellij-monitor\",\"cwd\":\"${focused_cwd}\",\"zellij_event\":\"pane_update\",\"total_panes\":$pane_count,\"focused_titles\":$focused}"
 fi
 tab_json="$(ZELLIJ_SESSION_NAME="$SESSION_NAME" zellij action list-tabs --json 2>/dev/null)"
 if [[ -n "$tab_json" ]]; then
@@ -73,9 +85,14 @@ else:
     else:
         print("")
 ' 2>/dev/null || echo '')"
+  tab_names="$(echo "$tab_json" | python3 -c '
+import json, sys
+d = json.load(sys.stdin)
+print(json.dumps([t.get("name","") for t in d]))
+' 2>/dev/null || echo '[]')"
   last_tab_count="$tab_count"
   last_active_tab="$active_tab"
-  post_event "{\"hook_event_name\":\"CwdChanged\",\"session_id\":\"zellij-monitor\",\"cwd\":\"/\",\"zellij_event\":\"tab_update\",\"tab_count\":$tab_count,\"active_tab\":\"$active_tab\"}"
+  post_event "{\"hook_event_name\":\"CwdChanged\",\"session_id\":\"zellij-monitor\",\"cwd\":\"/\",\"zellij_event\":\"tab_update\",\"tab_count\":$tab_count,\"tabs\":$tab_names,\"active_tab\":\"$active_tab\"}"
 fi
 
 while true; do
@@ -89,10 +106,24 @@ d = json.load(sys.stdin)
 titles = [p["title"] for p in d if not p.get("is_plugin") and p.get("is_focused")]
 print(json.dumps(titles))
 ' 2>/dev/null || echo '[]')"
+    focused_cwd="$(echo "$pane_json" | python3 -c '
+import json, sys
+d = json.load(sys.stdin)
+for p in d:
+    if not p.get("is_plugin") and p.get("is_focused"):
+        print(p.get("pane_cwd",""))
+        break
+else:
+    print("")
+' 2>/dev/null || echo '')"
     if [[ "$pane_count" -ne "$last_pane_count" || "$focused" != "$last_focused_titles" ]]; then
-      post_event "{\"hook_event_name\":\"FileChanged\",\"session_id\":\"zellij-monitor\",\"cwd\":\"/\",\"zellij_event\":\"pane_update\",\"total_panes\":$pane_count,\"focused_titles\":$focused}"
+      post_event "{\"hook_event_name\":\"FileChanged\",\"session_id\":\"zellij-monitor\",\"cwd\":\"${focused_cwd}\",\"zellij_event\":\"pane_update\",\"total_panes\":$pane_count,\"focused_titles\":$focused}"
       last_pane_count="$pane_count"
       last_focused_titles="$focused"
+    fi
+    if [[ "$focused_cwd" != "$last_focused_cwd" && -n "$focused_cwd" ]]; then
+      post_event "{\"hook_event_name\":\"CwdChanged\",\"session_id\":\"zellij-monitor\",\"cwd\":\"${focused_cwd}\",\"zellij_event\":\"cwd_change\",\"focused_titles\":$focused}"
+      last_focused_cwd="$focused_cwd"
     fi
   fi
 

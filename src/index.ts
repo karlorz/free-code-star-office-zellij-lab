@@ -341,18 +341,39 @@ const server = Bun.serve({
 
       const zellijEvent = typeof body.zellij_event === "string" ? body.zellij_event : "unknown";
       const sessionId = typeof body.session_id === "string" ? body.session_id : "zellij-monitor";
-      const state: NormalizedSignal["state"] = zellijEvent === "pane_update" ? "syncing" : "syncing";
+      const cwd = typeof body.cwd === "string" ? body.cwd : "/";
+
+      // Map Zellij events to office states
+      let state: NormalizedSignal["state"];
+      let detail: string;
+      switch (zellijEvent) {
+        case "pane_update":
+          state = "syncing";
+          detail = `pane_update: ${body.total_panes ?? "?"} panes`;
+          break;
+        case "tab_update":
+          state = "syncing";
+          detail = `tab_update: ${body.tab_count ?? "?"} tabs, active=${typeof body.active_tab === "string" ? body.active_tab : "?"}`;
+          break;
+        case "cwd_change":
+          state = "executing";
+          detail = `cwd_change: ${cwd}`;
+          break;
+        default:
+          state = "syncing";
+          detail = zellijEvent;
+      }
 
       const signal: NormalizedSignal = {
         sessionId,
         agentName: "main",
         scope: "main",
         state,
-        detail: zellijEvent,
+        detail,
         eventName: typeof body.hook_event_name === "string" ? body.hook_event_name : "ZellijEvent",
         shouldLeave: false,
         context: {
-          cwd: typeof body.cwd === "string" ? body.cwd : "/",
+          cwd,
           zellijEvent,
           zellijPaneCount: body.total_panes != null ? Number(body.total_panes) : undefined,
           zellijTabCount: body.tab_count != null ? Number(body.tab_count) : undefined,
