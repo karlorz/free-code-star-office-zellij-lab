@@ -889,7 +889,12 @@ es.onmessage=e=>{add("other",e.type+": "+e.data)};
 
       const session = body.session || config.zellijSessionName || "main";
       const args = body.args || [];
-      const env = { ZELLIJ_SESSION_NAME: session, HOME: process.env.HOME || "/root", XDG_RUNTIME_DIR: process.env.XDG_RUNTIME_DIR || "/run/user/0" };
+      const env = {
+        ZELLIJ_SESSION_NAME: session,
+        HOME: process.env.HOME || "/root",
+        XDG_RUNTIME_DIR: process.env.XDG_RUNTIME_DIR || "/run/user/0",
+        PATH: process.env.PATH || "/usr/local/bin:/usr/bin:/bin",
+      };
 
       try {
         const cmd = ["zellij", "action", body.action, ...args];
