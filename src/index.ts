@@ -384,6 +384,9 @@ function buildPrometheusMetrics(): string {
   lines.push(`# HELP bridge_ws_connections_total Total WebSocket connections established`);
   lines.push(`# TYPE bridge_ws_connections_total counter`);
   lines.push(`bridge_ws_connections_total ${metrics.wsConnections}`);
+  lines.push(`# HELP bridge_ws_disconnects_total Total WebSocket disconnections`);
+  lines.push(`# TYPE bridge_ws_disconnects_total counter`);
+  lines.push(`bridge_ws_disconnects_total ${metrics.wsDisconnects}`);
   lines.push(`# HELP bridge_ws_messages_total Total WebSocket messages received`);
   lines.push(`# TYPE bridge_ws_messages_total counter`);
   lines.push(`bridge_ws_messages_total ${metrics.wsMessages}`);
@@ -1088,7 +1091,7 @@ setInterval(()=>{fetch("/status").then(r=>r.json()).then(d=>{
     if (request.method === "GET" && url.pathname === "/help") {
       return json({
         ok: true,
-        version: "0.18.0",
+        version: "0.19.0",
         routes: ROUTE_TABLE,
       });
     }
@@ -1096,12 +1099,73 @@ setInterval(()=>{fetch("/status").then(r=>r.json()).then(d=>{
     if (request.method === "GET" && url.pathname === "/version") {
       return json({
         ok: true,
-        version: "0.18.0",
+        version: "0.19.0",
         runtime: `bun ${Bun.version}`,
         arch: process.arch,
         platform: process.platform,
         uptime: process.uptime(),
       });
+    }
+
+    if (request.method === "GET" && url.pathname === "/diagnostics") {
+      if (!isAuthorized(request)) {
+        return json({ ok: false, error: "authentication required" }, { status: 401 });
+      }
+      const diag: Record<string, unknown> = {
+        ok: true,
+        timestamp: new Date().toISOString(),
+        bridge: {
+          uptime: process.uptime(),
+          memory: process.memoryUsage(),
+          sseClients: sseClients.size,
+          sseEventLogSize: sseEventLog.length,
+          sessions: registry.list().length,
+          isShuttingDown,
+        },
+      };
+      // Detect stale zellij pipe processes
+      try {
+        const pipeProc = Bun.spawn(["pgrep", "-af", "zellij pipe"], {
+          stdout: "pipe", stderr: "pipe",
+          env: { ...process.env, HOME: process.env.HOME || "/root" },
+        });
+        const pipeOutput = await new Response(pipeProc.stdout).text();
+        const pipeExit = await pipeProc.exited;
+        const pipeLines = pipeOutput.trim().split("\n").filter(Boolean);
+        const stalePipes = pipeLines.filter(l =>
+          l.includes("push_state") && l.includes("init") && !l.includes("zellij-subscribe")
+        );
+        diag.staleZellijPipes = {
+          totalPipeProcesses: pipeLines.length,
+          staleInitPipes: stalePipes.length,
+          details: stalePipes.slice(0, 10),
+        };
+      } catch {
+        diag.staleZellijPipes = { error: "pgrep unavailable" };
+      }
+      // Check events log size
+      try {
+        const logStat = await stat(config.eventsLogPath);
+        diag.eventsLog = {
+          path: config.eventsLogPath,
+          sizeBytes: logStat.size,
+          sizeMB: Number((logStat.size / 1024 / 1024).toFixed(2)),
+          maxMB: EVENTS_LOG_MAX_BYTES / 1024 / 1024,
+          rotationNeeded: logStat.size > EVENTS_LOG_MAX_BYTES,
+        };
+      } catch {
+        diag.eventsLog = { path: config.eventsLogPath, exists: false };
+      }
+      // Dedup summary
+      const totalSeen = [...dedupCounts.values()].reduce((sum, s) => sum + s.seen, 0);
+      const totalPassed = [...dedupCounts.values()].reduce((sum, s) => sum + s.passed, 0);
+      diag.dedupSummary = {
+        keysTracked: dedupCounts.size,
+        totalSeen,
+        totalPassed,
+        suppressionRate: totalSeen > 0 ? Number(((1 - totalPassed / totalSeen) * 100).toFixed(1)) : 0,
+      };
+      return json(diag);
     }
 
     if (request.method === "GET" && url.pathname === "/snapshot") {
@@ -1205,7 +1269,9 @@ setInterval(()=>{fetch("/status").then(r=>r.json()).then(d=>{
           tokenRefreshes: metrics.tokenRefreshes,
           tokenRevocations: metrics.tokenRevocations,
           wsConnections: metrics.wsConnections,
+          wsDisconnects: metrics.wsDisconnects,
           wsMessages: metrics.wsMessages,
+          wsClientsCurrent: metrics.wsClientsCurrent,
         },
         dedup: {
           totalSeen,
@@ -1745,7 +1811,7 @@ setInterval(()=>{fetch("/status").then(r=>r.json()).then(d=>{
       } catch {}
       return json({
         ok: true,
-        version: "0.18.0",
+        version: "0.19.0",
         runtime: `bun ${Bun.version}`,
         arch: process.arch,
         platform: process.platform,
@@ -1969,6 +2035,7 @@ const ROUTE_TABLE: { method: string; path: string; description: string; auth: bo
   { method: "GET", path: "/metrics/caddy", description: "Proxy Caddy admin API metrics", auth: false },
   { method: "GET", path: "/metrics/combined", description: "Bridge + Caddy merged metrics (single scrape target)", auth: false },
   { method: "GET", path: "/version", description: "Bridge version, runtime, arch", auth: false },
+  { method: "GET", path: "/diagnostics", description: "Stale pipe detection, log size, dedup summary (authenticated)", auth: true },
   { method: "GET", path: "/ws", description: "WebSocket for bidirectional control (upgrade, auth optional — unauth=read-only)", auth: false },
   { method: "GET", path: "/help", description: "This route table", auth: false },
 ];
