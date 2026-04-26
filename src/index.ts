@@ -372,13 +372,17 @@ process.on("SIGINT", () => gracefulShutdown("SIGINT"));
 const server = Bun.serve({
   hostname: config.host,
   port: config.port,
-  idleTimeout: 30, // Default for HTTP/WebSocket; SSE streams override per-request below
+  idleTimeout: 30, // Default for HTTP request timeout; SSE uses server.timeout(req,0) per-request
   fetch: async (request: Request, srv: any): Promise<Response | undefined> => {
     const url = new URL(request.url);
 
     // WebSocket upgrade for bidirectional interactive consumers
     if (url.pathname === "/ws") {
-      const authed = isAuthorized(request);
+      // Browser WebSocket API doesn't support custom headers, so accept secret
+      // via query parameter as fallback: /ws?secret=xxx
+      const headerSecret = request.headers.get("x-bridge-secret");
+      const querySecret = url.searchParams.get("secret");
+      const authed = isAuthorized(request) || (config.secret && querySecret === config.secret);
       const upgraded = srv.upgrade(request, {
         data: {
           authenticated: authed,
@@ -674,8 +678,9 @@ es.onmessage=e=>{add("other",e.type+": "+e.data)};
 function wsToggle(){
   if(ws){ws.close();ws=null;return}
   const secret="${secret}";
-  const headers=secret?{"x-bridge-secret":secret}:{};
-  ws=new WebSocket((location.protocol==="https:"?"wss:":"ws:")+"//"+location.host+"/ws",Object.keys(headers).length?{headers}:undefined);
+  const wsUrl=new URL((location.protocol==="https:"?"wss:":"ws:")+"//"+location.host+"/ws");
+  if(secret)wsUrl.searchParams.set("secret",secret);
+  ws=new WebSocket(wsUrl.toString());
   ws.onopen=()=>{wsBadge.className="ws-indicator ws-on";add("other","WS connected")};
   ws.onclose=()=>{wsBadge.className="ws-indicator ws-off";add("other","WS disconnected")};
   ws.onmessage=e=>{
