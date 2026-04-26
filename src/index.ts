@@ -17,7 +17,7 @@ const SSE_MAX_BUFFERED_MESSAGES = 32; // Drop clients with more than this many b
 let sseEventSeq = 0;
 let sseClientSeq = 0;
 const sseClients = new Map<number, { controller: ReadableStreamDefaultController; buffered: number; connectedAt: number }>();
-const BRIDGE_VERSION = "0.64.0";
+const BRIDGE_VERSION = "0.65.0";
 
 // Shared environment for zellij CLI subprocess calls
 function zellijEnv(session?: string): Record<string, string | undefined> {
@@ -1510,11 +1510,14 @@ body{font-family:monospace;margin:0;background:#1a1a2e;color:#e0e0e0;display:fle
 <a href="/metrics/combined" target="_blank">metrics</a>
 <a href="/help">help</a>
 <a href="/web/tokens">tokens</a>
+<a href="/diagnostics">diagnostics</a>
 ${attachUrl ? `<a href="${attachUrl}" target="_blank">zellij web</a>` : ""}
 <span class="ws-indicator ws-off" id="wsBadge">WS</span>
 <button onclick="wsToggle()">${secret ? "WS connect" : "WS connect (no auth)"}</button>
 <button onclick="sendAction('list-tabs','--json')">list-tabs</button>
 <button onclick="sendAction('list-panes')">list-panes</button>
+<button onclick="debugGC()">gc</button>
+<button onclick="debugHeap()">heap</button>
 <button onclick="tokenRefresh()" style="margin-left:auto">refresh token</button>
 <span id="tokenStatus" style="font-size:0.75rem;color:#aaa">token: ${config.zellijWebToken ? "set" : "none"}</span>
 </div>
@@ -1572,6 +1575,26 @@ function wsToggle(){
 function sendAction(action,...args){
   if(!ws||ws.readyState!==1){add("other","WS not connected");return}
   ws.send(JSON.stringify({type:"action",action,args}));
+}
+async function debugGC(){
+  if(!secret){add("other","no auth secret configured");return}
+  try{
+    const r=await fetch("/debug/gc?force=true",{method:"POST",headers:{"x-bridge-secret":secret}});
+    const d=await r.json();
+    add("other","GC force="+d.force+" freedRss="+((d.freedRss||0)/1024/1024).toFixed(1)+"MB freedHeap="+((d.freedHeap||0)/1024/1024).toFixed(2)+"MB");
+  }catch(e){add("other","GC error: "+e)}
+}
+async function debugHeap(){
+  if(!secret){add("other","no auth secret configured");return}
+  try{
+    const r=await fetch("/debug/heap-snapshot",{headers:{"x-bridge-secret":secret}});
+    if(!r.ok){add("other","HEAP error "+r.status);return}
+    const blob=await r.blob();
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement("a");a.href=url;a.download="bridge-heap.heapsnapshot";a.click();
+    URL.revokeObjectURL(url);
+    add("other","HEAP snapshot downloaded ("+((blob.size)/1024/1024).toFixed(1)+"MB)");
+  }catch(e){add("other","HEAP error: "+e)}
 }
 async function tokenRefresh(){
   if(!secret){add("other","no auth secret configured");return}
