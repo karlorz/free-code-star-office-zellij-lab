@@ -32,13 +32,14 @@ SyslogIdentifier=zellij-monitor
 # Cannot use PrivateTmp=yes unless Zellij socket path is relocated to /run/
 # PrivateTmp=yes
 
-# ProtectHome: read-only -- allows reading /root config, blocks writes
-# If Zellij config needs writes, add: BindPaths=/root/.cache/zellij
-ProtectHome=read-only
+# ProtectHome: DISABLED -- Zellij needs write access to /root/.cache/zellij/
+# for plugin cache and permissions. read-only breaks zellij CLI commands.
+# Compensate with other directives below.
+# ProtectHome=read-only
 
-# ProtectSystem: strict with explicit write exceptions
+# ProtectSystem: strict with explicit write exceptions for project tmp + zellij cache
 ProtectSystem=strict
-ReadWritePaths=/root/free-code-star-office-zellij-lab/tmp
+ReadWritePaths=/root/free-code-star-office-zellij-lab/tmp /root/.cache/zellij
 
 # Prevent privilege escalation
 NoNewPrivileges=yes
