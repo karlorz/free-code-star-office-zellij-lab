@@ -17,7 +17,7 @@ const SSE_MAX_BUFFERED_MESSAGES = 32; // Drop clients with more than this many b
 let sseEventSeq = 0;
 let sseClientSeq = 0;
 const sseClients = new Map<number, { controller: ReadableStreamDefaultController; buffered: number; connectedAt: number }>();
-const BRIDGE_VERSION = "0.53.0";
+const BRIDGE_VERSION = "0.54.0";
 
 // Shared environment for zellij CLI subprocess calls
 function zellijEnv(session?: string): Record<string, string | undefined> {
@@ -1831,7 +1831,7 @@ setInterval(()=>{fetch("/status").then(r=>r.json()).then(d=>{
     if (request.method === "GET" && url.pathname === "/metrics/caddy") {
       // Proxy Caddy's built-in Prometheus metrics from admin API
       try {
-        const caddyResp = await fetch("http://127.0.0.1:2019/metrics");
+        const caddyResp = await fetch("http://127.0.0.1:2019/metrics", { signal: AbortSignal.timeout(3000) });
         const body = await caddyResp.text();
         return new Response(body, {
           headers: {
@@ -1850,7 +1850,7 @@ setInterval(()=>{fetch("/status").then(r=>r.json()).then(d=>{
         const bridgeMetrics = buildPrometheusMetrics();
         let caddyMetrics = "";
         try {
-          const caddyResp = await fetch("http://127.0.0.1:2019/metrics");
+          const caddyResp = await fetch("http://127.0.0.1:2019/metrics", { signal: AbortSignal.timeout(3000) });
           caddyMetrics = await caddyResp.text();
         } catch {}
         const separator = caddyMetrics ? "\n# Caddy reverse proxy metrics\n" : "\n# Caddy metrics unavailable\n";
@@ -2521,7 +2521,7 @@ setInterval(()=>{fetch("/status").then(r=>r.json()).then(d=>{
       let heapStats: Record<string, unknown> | null = cachedHeapStats;
       let caddyHealth: { healthy: boolean; upstreamsHealthy: number; upstreamsTotal: number } | null = null;
       try {
-        const caddyResp = await fetch("http://127.0.0.1:2019/metrics");
+        const caddyResp = await fetch("http://127.0.0.1:2019/metrics", { signal: AbortSignal.timeout(3000) });
         const caddyText = await caddyResp.text();
         const healthyLines = caddyText.split("\n").filter(l => l.startsWith("caddy_reverse_proxy_upstreams_healthy{"));
         const upstreamsTotal = healthyLines.length;

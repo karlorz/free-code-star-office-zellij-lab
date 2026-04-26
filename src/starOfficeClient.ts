@@ -33,22 +33,53 @@ export class StarOfficeClient {
       };
     }
 
-    const response = await fetch(`${this.baseUrl}${path}`, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-      },
-      body: JSON.stringify(body),
-    });
+    const maxRetries = 3;
+    const baseDelayMs = 1000;
+    let lastError: Error | null = null;
 
-    const text = await response.text();
-    const parsed = parseJsonSafely(text);
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      try {
+        const response = await fetch(`${this.baseUrl}${path}`, {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+          },
+          body: JSON.stringify(body),
+          signal: AbortSignal.timeout(5000),
+        });
 
-    if (!response.ok) {
-      throw new Error(`Star Office request failed ${response.status}: ${text}`);
+        const text = await response.text();
+
+        if (!response.ok) {
+          // Non-retryable client errors (4xx except 429, 408, 421)
+          if (response.status >= 400 && response.status < 500 && response.status !== 429 && response.status !== 408) {
+            throw new Error(`Star Office request failed ${response.status}: ${text}`);
+          }
+          // Server errors and rate-limit: retry
+          lastError = new Error(`Star Office request failed ${response.status}: ${text}`);
+        } else {
+          return parseJsonSafely(text);
+        }
+      } catch (err) {
+        if (err instanceof Error && err.name === "TimeoutError") {
+          lastError = new Error(`Star Office request timed out (5s) on attempt ${attempt + 1}`);
+        } else if (err instanceof Error && (err as any).code === "ECONNREFUSED") {
+          lastError = new Error(`Star Office connection refused on attempt ${attempt + 1}`);
+        } else if (err instanceof Error && err.message.startsWith("Star Office request failed 4")) {
+          throw err; // Non-retryable 4xx: rethrow immediately
+        } else {
+          lastError = err instanceof Error ? err : new Error(String(err));
+        }
+      }
+
+      // Exponential backoff: 1s, 2s, 4s (skip on last attempt)
+      if (attempt < maxRetries - 1) {
+        const delayMs = baseDelayMs * Math.pow(2, attempt);
+        await Bun.sleep(delayMs);
+      }
     }
 
-    return parsed;
+    throw lastError || new Error("Star Office request failed after retries");
   }
 
   private async ensureJoined(signal: NormalizedSignal): Promise<string> {
