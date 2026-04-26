@@ -1058,6 +1058,7 @@ setInterval(()=>{if(ws&&ws.readyState===1)ws.send(JSON.stringify({type:"ping"}))
         return json({
           ok: true,
           refreshed: !!newToken,
+          tokenName: newTokenName,
           webUrl,
           webToken: newToken,
           sessionName,
