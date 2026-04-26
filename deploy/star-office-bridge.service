@@ -17,6 +17,8 @@ EnvironmentFile=-/etc/star-office-bridge.env
 # Token persistence file (writable by service, survives restarts)
 EnvironmentFile=-/root/free-code-star-office-zellij-lab/.env.persist
 Environment=BRIDGE_ENV_FILE=/root/free-code-star-office-zellij-lab/.env.persist
+# Secret: loaded from credstore for BRIDGE_SECRET, not visible via systemctl show
+LoadCredential=bridge-secret:/etc/credstore/star-office-bridge.secret
 
 # Restart policy
 Restart=on-failure

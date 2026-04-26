@@ -18,6 +18,13 @@ if [[ -z "$SESSION_NAME" ]]; then
   exit 1
 fi
 
+# Load BRIDGE_SECRET from systemd credential store if available (systemd v250+)
+# Falls back to environment variable for backward compatibility
+if [[ -z "${BRIDGE_SECRET:-}" && -n "${CREDENTIALS_DIRECTORY:-}" && -f "${CREDENTIALS_DIRECTORY}/bridge-secret" ]]; then
+  BRIDGE_SECRET="$(cat "${CREDENTIALS_DIRECTORY}/bridge-secret")"
+  export BRIDGE_SECRET
+fi
+
 post_event() {
   local json_body="$1"
   local headers=(-H 'Content-Type: application/json')
