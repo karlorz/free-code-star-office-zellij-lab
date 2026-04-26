@@ -36,6 +36,8 @@
   - `InstructionsLoaded`
   - `CwdChanged`
   - `FileChanged`
+  - `WorktreeCreate`
+  - `WorktreeRemove`
   - `PreCompact`
   - `PostCompact`
 
