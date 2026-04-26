@@ -219,8 +219,9 @@ async function appendEvent(entry: BridgeEventLogEntry): Promise<void> {
         // Move current log to .1
         await renameFile(config.eventsLogPath, `${config.eventsLogPath}.1`);
         // Compress the new .1 file in the background — reduces storage ~90%
+        // onExit handler prevents zombie process when zstd finishes
         const zstSrc = `${config.eventsLogPath}.1`;
-        Bun.spawn({ cmd: ["zstd", "-3", "--rm", zstSrc], stderr: "ignore" });
+        Bun.spawn({ cmd: ["zstd", "-3", "--rm", zstSrc], stderr: "ignore", onExit: () => {} });
       }
     } catch {
       // File doesn't exist yet — no rotation needed
@@ -331,7 +332,7 @@ function buildPrometheusMetrics(): string {
   // Build info metric — standard pattern for version identification from Prometheus queries
   lines.push(`# HELP bridge_info Bridge build information`);
   lines.push(`# TYPE bridge_info gauge`);
-  const versionStr = "0.30.0";
+  const versionStr = "0.31.0";
   lines.push(`bridge_info{version="${versionStr}",runtime="bun_${Bun.version}",arch="${process.arch}",platform="${process.platform}"} 1`);
   // SSE metrics
   lines.push(`# HELP bridge_sse_clients_current Current SSE client connections`);
@@ -1642,8 +1643,9 @@ setInterval(()=>{fetch("/status").then(r=>r.json()).then(d=>{
             let content: string;
             if (filePath.endsWith(".zst")) {
               // Decompress zstd on the fly via Bun.spawn
-              const proc = Bun.spawn(["zstd", "-d", "--stdout", filePath], { stdout: "pipe" });
+              const proc = Bun.spawn(["zstd", "-d", "--stdout", filePath], { stdout: "pipe", onExit: () => {} });
               content = await new Response(proc.stdout).text();
+              await proc.exited;
             } else {
               content = await readFile(filePath, "utf8");
             }
