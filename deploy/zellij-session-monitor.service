@@ -1,0 +1,25 @@
+[Unit]
+Description=Zellij Session Monitor - polls Zellij state and posts to Star Office Bridge
+After=star-office-bridge.service
+Wants=star-office-bridge.service
+
+[Service]
+Type=simple
+ExecStartPre=/bin/sleep 2
+ExecStart=/bin/bash /root/free-code-star-office-zellij-lab/scripts/zellij-session-monitor.sh
+WorkingDirectory=/root/free-code-star-office-zellij-lab
+Environment=BRIDGE_URL=http://127.0.0.1:4317
+Environment=ZELLIJ_SESSION_NAME=main
+Environment=POLL_INTERVAL=2
+Environment=PATH=/usr/local/bin:/usr/bin:/bin
+Restart=on-failure
+RestartSec=5
+StandardOutput=append:/tmp/zellij-monitor.log
+StandardError=append:/tmp/zellij-monitor.log
+
+# Security hardening
+NoNewPrivileges=yes
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target
