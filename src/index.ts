@@ -17,7 +17,7 @@ const SSE_MAX_BUFFERED_MESSAGES = 32; // Drop clients with more than this many b
 let sseEventSeq = 0;
 let sseClientSeq = 0;
 const sseClients = new Map<number, { controller: ReadableStreamDefaultController; buffered: number; connectedAt: number }>();
-const BRIDGE_VERSION = "0.54.0";
+const BRIDGE_VERSION = "0.55.0";
 
 // Shared environment for zellij CLI subprocess calls
 function zellijEnv(session?: string): Record<string, string | undefined> {
@@ -1393,6 +1393,7 @@ async function handleRequest(request: Request, url: URL): Promise<Response> {
       const mem = process.memoryUsage();
       return json({
         ok: true,
+        version: BRIDGE_VERSION,
         host: config.host,
         port: config.port,
         dryRun: config.dryRun,
@@ -1406,6 +1407,8 @@ async function handleRequest(request: Request, url: URL): Promise<Response> {
         sseClientIds: [...sseClients.keys()],
         uptime: process.uptime(),
         memory: { rss: mem.rss, heapUsed: mem.heapUsed, heapTotal: mem.heapTotal },
+        processMemoryRssMb: Math.round(mem.rss / 1024 / 1024),
+        dedupEntries: dedupCounts.size,
         zellijSessionHealthy: metrics.zellijSessionHealthy === 1,
         zellijHealthFailures: metrics.zellijHealthConsecutiveFailures,
         zellijRecoveryAttempts: metrics.zellijRecoveryAttempts,
@@ -1420,10 +1423,13 @@ async function handleRequest(request: Request, url: URL): Promise<Response> {
     }
 
     if (request.method === "GET" && url.pathname === "/readyz") {
-      // Readiness probe: returns 503 during graceful shutdown, 200 otherwise
+      // Readiness probe: 503 during graceful shutdown or if zellij session is down
       // Load balancers and Caddy should use this (not /healthz) to route traffic
       if (isShuttingDown) {
         return new Response("shutting down", { status: 503, headers: { "content-type": "text/plain", ...CORS_HEADERS } });
+      }
+      if (metrics.zellijSessionHealthy === 0) {
+        return new Response("zellij session unhealthy", { status: 503, headers: { "content-type": "text/plain", ...CORS_HEADERS } });
       }
       return new Response("ok", { status: 200, headers: { "content-type": "text/plain", ...CORS_HEADERS } });
     }
