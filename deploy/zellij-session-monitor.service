@@ -19,7 +19,8 @@ StandardError=append:/tmp/zellij-monitor.log
 
 # Security hardening
 NoNewPrivileges=yes
-PrivateTmp=yes
+# PrivateTmp breaks Zellij socket access at /tmp/zellij-0/
+# PrivateTmp=yes
 
 [Install]
 WantedBy=multi-user.target
