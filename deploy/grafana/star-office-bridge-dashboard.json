@@ -110,7 +110,7 @@
       "type": "timeseries",
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 20 },
       "targets": [
-        { "expr": "caddy:error_5xx_ratio:rate3m", "legendFormat": "5xx Ratio", "refId": "A" },
+        { "expr": "caddy:error_5xx_ratio:rate5m", "legendFormat": "5xx Ratio", "refId": "A" },
         { "expr": "sum(rate(caddy_http_request_duration_seconds_count{code=~\"5..\"}[3m]))", "legendFormat": "5xx Req/s", "refId": "B" }
       ],
       "fieldConfig": { "overrides": [{ "matcher": { "id": "byName", "options": "5xx Ratio" }, "properties": [{ "id": "unit", "value": "percentunit" }] }] }

@@ -662,6 +662,17 @@ const server = Bun.serve({
 
     // WebSocket upgrade for bidirectional interactive consumers
     if (url.pathname === "/ws") {
+      // Origin validation: prevent Cross-Site WebSocket Hijacking (CSWSH/OWASP)
+      const origin = request.headers.get("origin");
+      const allowedOrigins = config.zellijWebUrl
+        ? [new URL(config.zellijWebUrl).origin, `https://${new URL(config.zellijWebUrl).hostname}`]
+        : [];
+      const localOrigins = ["http://localhost:4317", "http://127.0.0.1:4317"];
+      const allAllowed = new Set([...allowedOrigins, ...localOrigins]);
+      if (origin && !allAllowed.has(origin)) {
+        return json({ ok: false, error: "origin not allowed" }, { status: 403 });
+      }
+
       // Browser WebSocket API doesn't support custom headers, so accept secret
       // via query parameter as fallback: /ws?secret=xxx
       const headerSecret = request.headers.get("x-bridge-secret");
@@ -693,10 +704,11 @@ const server = Bun.serve({
   },
   websocket: {
     maxPayloadLength: 65536, // 64KB max WS message (default 16MB is too generous for action commands)
-    sendPings: true, // Protocol-level pings keep idle connections alive; closed after idleTimeout
+    idleTimeout: 0, // Disable Bun's idleTimeout for WS — Bun #26554: sendPings+idleTimeout kills long-lived connections
+    sendPings: false, // Disabled: use application-level ping/pong instead (avoids Bun #26554)
     open(ws) {
       const data = ws.data as unknown as { authenticated: boolean; connectedAt: number; sessionId?: string };
-      console.log(`[bridge] ws client connected authed=${data.authenticated} session=${data.sessionId || "none"} total=${server.subscriberCount("bridge-events") + 1}`);
+      console.log(`[bridge] ws client connected authed=${data.authenticated} session=${data.sessionId || "none"} total=${server.subscriberCount("bridge-events") + 1}`); // secret param intentionally omitted from log
       metrics.wsConnections++;
       metrics.wsClientsCurrent++;
       // Subscribe to the event broadcast channel
@@ -779,6 +791,15 @@ const server = Bun.serve({
       const connDuration = data.connectedAt ? ((Date.now() - data.connectedAt) / 1000).toFixed(1) : "?";
       console.log(`[bridge] ws client disconnected code=${code} session=${data.sessionId || "none"} duration=${connDuration}s`);
       metrics.wsClientsCurrent--;
+      metrics.wsDisconnects++;
+      ws.unsubscribe("bridge-events");
+    },
+    // error handler: Bun doesn't expose this in WebSocketHandler types yet,
+    // but catching unhandled errors prevents silent connection drops
+    // @ts-expect-error — Bun supports error handler but types lag behind
+    error(ws: any, error: unknown) {
+      const data = ws.data as unknown as { sessionId?: string };
+      console.error(`[bridge] ws error session=${data.sessionId || "none"}: ${error instanceof Error ? error.message : String(error)}`);
       metrics.wsDisconnects++;
       ws.unsubscribe("bridge-events");
     },
@@ -1091,7 +1112,7 @@ setInterval(()=>{fetch("/status").then(r=>r.json()).then(d=>{
     if (request.method === "GET" && url.pathname === "/help") {
       return json({
         ok: true,
-        version: "0.19.0",
+        version: "0.20.0",
         routes: ROUTE_TABLE,
       });
     }
@@ -1099,7 +1120,7 @@ setInterval(()=>{fetch("/status").then(r=>r.json()).then(d=>{
     if (request.method === "GET" && url.pathname === "/version") {
       return json({
         ok: true,
-        version: "0.19.0",
+        version: "0.20.0",
         runtime: `bun ${Bun.version}`,
         arch: process.arch,
         platform: process.platform,
@@ -1811,7 +1832,7 @@ setInterval(()=>{fetch("/status").then(r=>r.json()).then(d=>{
       } catch {}
       return json({
         ok: true,
-        version: "0.19.0",
+        version: "0.20.0",
         runtime: `bun ${Bun.version}`,
         arch: process.arch,
         platform: process.platform,

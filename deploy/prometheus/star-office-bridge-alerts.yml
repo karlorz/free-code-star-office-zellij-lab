@@ -138,11 +138,7 @@ groups:
 
       # WARNING: Caddy high 5xx error rate
       - alert: CaddyHigh5xxErrorRate
-        expr: |
-          (
-            sum(rate(caddy_http_request_duration_seconds_count{code=~"5.."}[3m]))
-            / sum(rate(caddy_http_request_duration_seconds_count[3m])) > 0
-          ) > 0.05
+        expr: caddy:error_5xx_ratio:rate5m > 0.05
         for: 3m
         labels:
           severity: warning
@@ -204,40 +200,35 @@ groups:
             {{ $value }} in-flight requests. High for a single-upstream bridge.
 
   # ── Recording Rules ────────────────────────────────────────────────
+  # Only rules that genuinely accelerate queries are kept.
+  # Trivial rate() on low-cardinality single-instance counters are removed —
+  # Grafana computes these on-the-fly in microseconds.
   - name: star-office-bridge.recording
     interval: 30s
     rules:
+      # Ratio rules: these pre-compute division expressions used by alerts/dashboards
       - record: bridge:signal_dedup_ratio:rate5m
         expr: |
           rate(bridge_signals_duplicate_total[5m])
           / (rate(bridge_signals_processed_total[5m]) + rate(bridge_signals_duplicate_total[5m]))
-
-      - record: bridge:signal_rate:rate5m
-        expr: |
-          rate(bridge_signals_processed_total[5m])
-          + rate(bridge_signals_duplicate_total[5m])
-
-      - record: bridge:sse_eviction_rate:rate5m
-        expr: rate(bridge_sse_client_evicted_total[5m])
-
-      - record: bridge:http_request_rate:rate5m
-        expr: sum(rate(bridge_http_requests_total[5m])) without(path)
 
       - record: bridge:star_office_apply_failure_ratio:rate5m
         expr: |
           rate(bridge_star_office_apply_failures_total[5m])
           / (rate(bridge_star_office_apply_total[5m]) + rate(bridge_star_office_apply_failures_total[5m]))
 
-      - record: caddy:error_5xx_ratio:rate3m
+      - record: caddy:error_5xx_ratio:rate5m
         expr: |
-          sum(rate(caddy_http_request_duration_seconds_count{code=~"5.."}[3m]))
-          / sum(rate(caddy_http_request_duration_seconds_count[3m]))
+          sum(rate(caddy_http_request_duration_seconds_count{code=~"5.."}[5m]))
+          / sum(rate(caddy_http_request_duration_seconds_count[5m]))
 
-      - record: caddy:upstream_health_ratio
+      # Gauge-derived ratio: upstream health is referenced by alerts
+      - record: caddy:upstream_health:ratio
         expr: |
           sum(caddy_reverse_proxy_upstreams_healthy)
           / count(caddy_reverse_proxy_upstreams_healthy)
 
+      # Histogram quantile rules: these avoid recomputing rate()+sum by(le) per query
       - record: bridge:http_request_duration:p95
         expr: |
           histogram_quantile(0.95,
