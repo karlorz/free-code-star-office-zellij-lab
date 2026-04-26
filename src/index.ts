@@ -885,7 +885,7 @@ setInterval(()=>{if(ws&&ws.readyState===1)ws.send(JSON.stringify({type:"ping"}))
     if (request.method === "GET" && url.pathname === "/help") {
       return json({
         ok: true,
-        version: "0.10.0",
+        version: "0.11.0",
         routes: ROUTE_TABLE,
       });
     }
@@ -893,7 +893,7 @@ setInterval(()=>{if(ws&&ws.readyState===1)ws.send(JSON.stringify({type:"ping"}))
     if (request.method === "GET" && url.pathname === "/version") {
       return json({
         ok: true,
-        version: "0.10.0",
+        version: "0.11.0",
         runtime: `bun ${Bun.version}`,
         arch: process.arch,
         platform: process.platform,
@@ -1464,7 +1464,7 @@ setInterval(()=>{if(ws&&ws.readyState===1)ws.send(JSON.stringify({type:"ping"}))
       } catch {}
       return json({
         ok: true,
-        version: "0.10.0",
+        version: "0.11.0",
         runtime: `bun ${Bun.version}`,
         arch: process.arch,
         platform: process.platform,
