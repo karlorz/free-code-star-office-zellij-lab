@@ -47,6 +47,7 @@ last_focused_command=''
 last_client_count=0
 last_tab_names=''
 last_floating_count=0
+last_web_status=''
 
 post_event() {
   local json_body="$1"
@@ -218,6 +219,13 @@ for p in json.load(sys.stdin):
   if [[ "$client_count" -ne "$last_client_count" ]]; then
     post_event "{\"hook_event_name\":\"Elicitation\",\"session_id\":\"zellij-monitor\",\"cwd\":\"/\",\"zellij_event\":\"client_update\",\"client_count\":$client_count}"
     last_client_count="$client_count"
+  fi
+
+  # Check Zellij web server status (indirect web client presence detection)
+  web_status="$(zellij web --status 2>/dev/null || echo 'offline')"
+  if [[ "$web_status" != "$last_web_status" ]]; then
+    post_event "{\"hook_event_name\":\"Elicitation\",\"session_id\":\"zellij-monitor\",\"cwd\":\"/\",\"zellij_event\":\"web_status\",\"web_status\":\"${web_status}\"}"
+    last_web_status="$web_status"
   fi
 
   # Check for shutdown signal between poll cycles

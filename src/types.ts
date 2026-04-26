@@ -82,6 +82,7 @@ export interface SignalContext {
   zellijViewportLines?: number;
   zellijViewportHash?: string;
   zellijLastLine?: string;
+  zellijWebStatus?: string;
 }
 
 export interface NormalizedSignal {

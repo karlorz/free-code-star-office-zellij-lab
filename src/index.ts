@@ -166,6 +166,10 @@ function mapZellijEvent(body: Record<string, unknown>): NormalizedSignal {
       state = "syncing";
       detail = `client_update: ${body.client_count ?? "?"} clients`;
       break;
+    case "web_status":
+      state = "syncing";
+      detail = `web_status: ${typeof body.web_status === "string" ? body.web_status : "?"}`;
+      break;
     default:
       state = "syncing";
       detail = zellijEvent;
@@ -196,6 +200,7 @@ function mapZellijEvent(body: Record<string, unknown>): NormalizedSignal {
       zellijViewportLines: body.viewport_lines != null ? Number(body.viewport_lines) : undefined,
       zellijViewportHash: typeof body.viewport_hash === "string" ? body.viewport_hash : undefined,
       zellijLastLine: typeof body.last_line === "string" ? body.last_line : undefined,
+      zellijWebStatus: typeof body.web_status === "string" ? body.web_status : undefined,
     },
   };
 }
@@ -224,6 +229,7 @@ const ALLOWED_ACTIONS = new Set([
   "start-or-reload-plugin", "launch-or-focus-plugin",
   "list-clients", "list-panes", "list-tabs",
   "subscribe",
+  "web --status", "web --create-token", "web --create-read-only-token", "web --revoke-token",
 ]);
 
 function checkRateLimit(request: Request): string | null {
