@@ -14,6 +14,9 @@ Environment=ZELLIJ_SESSION_NAME=main
 Environment=PATH=/root/.bun/bin:/usr/local/bin:/usr/bin:/bin
 # Secrets loaded from local env file (not tracked in git)
 EnvironmentFile=-/etc/star-office-bridge.env
+# Token persistence file (writable by service, survives restarts)
+EnvironmentFile=-/root/free-code-star-office-zellij-lab/.env.persist
+Environment=BRIDGE_ENV_FILE=/root/free-code-star-office-zellij-lab/.env.persist
 
 # Restart policy
 Restart=on-failure

@@ -1064,8 +1064,9 @@ setInterval(()=>{if(ws&&ws.readyState===1)ws.send(JSON.stringify({type:"ping"}))
           (config as unknown as Record<string, unknown>).zellijWebTokenName = newTokenName;
           // Persist to env file so token survives restart
           try {
-            const envPath = process.env.BRIDGE_ENV_FILE || "/etc/star-office-bridge.env";
-            const envContent = await readFile(envPath, "utf8");
+            const envPath = process.env.BRIDGE_ENV_FILE || "/root/free-code-star-office-zellij-lab/.env.persist";
+            let envContent = "";
+            try { envContent = await readFile(envPath, "utf8"); } catch { /* first write */ }
             const lines = envContent.split("\n");
             let foundToken = false, foundName = false;
             const updated = lines.map(line => {
@@ -1076,7 +1077,7 @@ setInterval(()=>{if(ws&&ws.readyState===1)ws.send(JSON.stringify({type:"ping"}))
             if (!foundToken) updated.push(`ZELLIJ_WEB_TOKEN=${newToken}`);
             if (!foundName) updated.push(`ZELLIJ_WEB_TOKEN_NAME=${newTokenName}`);
             const { writeFile } = await import("node:fs/promises");
-            await writeFile(envPath, updated.join("\n") + "\n", "utf8");
+            await writeFile(envPath, updated.filter(l => l.trim()).join("\n") + "\n", "utf8");
           } catch (err) {
             console.warn("[bridge] failed to persist token to env file:", err);
           }
