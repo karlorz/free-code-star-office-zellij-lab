@@ -94,6 +94,12 @@ This helper starts the same bridge and plugin wiring, but launches an interactiv
 Use it from a pane-capable interactive terminal, create a team from the leader session, spawn a worker, and then have the worker attempt the first concrete permission probe `touch worker-permission-probe.txt` so the leader-side `Notification` hook can surface.
 The helper now also prints a recommended leader prompt before launching the runtime, and you can override that text with `LEADER_PROMPT=...` when you want to try a narrower or more forceful approval-triggering worker action.
 
+Before a live run on sg01, check target-host readiness without installing software, starting services, or triggering hooks:
+
+```bash
+bash ./scripts/check-sg01-live-capture-readiness.sh
+```
+
 After a live run, summarize the captured artifact without triggering any new runtime actions:
 
 ```bash
