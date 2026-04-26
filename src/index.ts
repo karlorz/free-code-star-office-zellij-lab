@@ -13,7 +13,13 @@ import type {
 
 const SSE_REPLAY_CAPACITY = 64;
 let sseEventSeq = 0;
-const sseClients = new Set<ReadableStreamDefaultController>();
+let sseClientSeq = 0;
+const sseClients = new Map<number, ReadableStreamDefaultController>();
+const CORS_HEADERS = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type, Last-Event-ID, X-Bridge-Secret",
+};
 const sseEventLog: { id: number; event: string; payload: unknown }[] = [];
 const lastSignalByKey = new Map<string, string>();
 const dedupCounts = new Map<string, { seen: number; passed: number }>();
@@ -34,11 +40,11 @@ function broadcastSSE(event: string, payload: unknown): number {
   sseEventLog.push(entry);
   if (sseEventLog.length > SSE_REPLAY_CAPACITY) sseEventLog.shift();
   const message = formatSSE(payload, event, id);
-  for (const controller of sseClients) {
+  for (const [cid, controller] of sseClients) {
     try {
       controller.enqueue(message);
     } catch {
-      sseClients.delete(controller);
+      sseClients.delete(cid);
     }
   }
 }
@@ -52,6 +58,7 @@ function json(data: unknown, init?: ResponseInit): Response {
     ...init,
     headers: {
       "content-type": "application/json; charset=utf-8",
+      ...CORS_HEADERS,
       ...(init?.headers || {}),
     },
   });
@@ -180,11 +187,11 @@ async function processSignal(
 
 const keepAliveInterval = setInterval(() => {
   const ping = encoder.encode(": ping\n\n");
-  for (const controller of sseClients) {
+  for (const [cid, controller] of sseClients) {
     try {
       controller.enqueue(ping);
     } catch {
-      sseClients.delete(controller);
+      sseClients.delete(cid);
     }
   }
 }, 15_000);
@@ -197,7 +204,7 @@ async function gracefulShutdown(signal: string): Promise<void> {
   console.log(`[bridge] received ${signal}, draining ${sseClients.size} SSE clients...`);
 
   const shutdownMessage = formatSSE({ shutdown: true, reason: signal }, "shutdown");
-  for (const controller of sseClients) {
+  for (const [cid, controller] of sseClients) {
     try {
       controller.enqueue(shutdownMessage);
       controller.close();
@@ -220,21 +227,27 @@ const server = Bun.serve({
     const url = new URL(request.url);
 
     if (!isAuthorized(request) && request.method !== "GET") {
-      return json({ ok: false, error: "unauthorized" }, { status: 401 });
+      return json({ ok: false, error: "unauthorized" }, { status: 401, headers: CORS_HEADERS });
+    }
+
+    // Handle CORS preflight
+    if (request.method === "OPTIONS") {
+      return new Response(null, { status: 204, headers: CORS_HEADERS });
     }
 
     if (request.method === "GET" && url.pathname === "/events") {
       server.timeout(request, 0);
       const lastEventId = request.headers.get("Last-Event-ID");
+      const clientId = ++sseClientSeq;
       const stream = new ReadableStream({
         start(controller) {
-          sseClients.add(controller);
+          sseClients.set(clientId, controller);
           // Send full snapshot on connect so new clients have current state
           const snapshot = registry.list();
           try {
-            controller.enqueue(formatSSE(snapshot, "snapshot", ++sseEventSeq));
+            controller.enqueue(formatSSE({ ...snapshot, _clientId: clientId }, "snapshot", ++sseEventSeq));
           } catch {
-            sseClients.delete(controller);
+            sseClients.delete(clientId);
             return;
           }
           // Replay recent events to new clients if they send Last-Event-ID
@@ -248,7 +261,7 @@ const server = Bun.serve({
                   try {
                     controller.enqueue(formatSSE(entry.payload, entry.event, entry.id));
                   } catch {
-                    sseClients.delete(controller);
+                    sseClients.delete(clientId);
                     return;
                   }
                 }
@@ -257,7 +270,7 @@ const server = Bun.serve({
             }
           }
           request.signal.addEventListener("abort", () => {
-            sseClients.delete(controller);
+            sseClients.delete(clientId);
             try {
               controller.close();
             } catch {}
@@ -269,6 +282,7 @@ const server = Bun.serve({
           "Content-Type": "text/event-stream",
           "Cache-Control": "no-cache",
           "X-Accel-Buffering": "no",
+          ...CORS_HEADERS,
         },
       });
     }
@@ -283,12 +297,13 @@ const server = Bun.serve({
         sseClients: sseClients.size,
         sseEventLogSize: sseEventLog.length,
         sessions: registry.list().length,
+        sseClientIds: [...sseClients.keys()],
         uptime: process.uptime(),
       });
     }
 
     if (request.method === "GET" && url.pathname === "/healthz") {
-      return new Response("ok", { status: 200, headers: { "content-type": "text/plain" } });
+      return new Response("ok", { status: 200, headers: { "content-type": "text/plain", ...CORS_HEADERS } });
     }
 
     if (request.method === "GET" && url.pathname === "/snapshot") {
@@ -367,6 +382,7 @@ const server = Bun.serve({
         ok: true,
         uptime: process.uptime(),
         sseClients: sseClients.size,
+        sseClientIds: [...sseClients.keys()],
         sseEventLogSize: sseEventLog.length,
         sessions: registry.list().length,
         dedup: {
