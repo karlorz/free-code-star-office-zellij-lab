@@ -365,6 +365,11 @@ function buildPrometheusMetrics(): string {
     lines.push(`bridge_http_request_duration_milliseconds_sum{path="${path}"} ${entry.sum.toFixed(2)}`);
     lines.push(`bridge_http_request_duration_milliseconds_count{path="${path}"} ${entry.count}`);
   }
+  // Caddy upstream health gauge (sourced from Caddy admin API)
+  try {
+    const caddyResp = fetch("http://127.0.0.1:2019/metrics");
+    // Sync fetch not available; skip in buildPrometheusMetrics (added to /status instead)
+  } catch {}
   return lines.join("\n") + "\n";
 }
 
@@ -961,7 +966,7 @@ setInterval(()=>{if(ws&&ws.readyState===1)ws.send(JSON.stringify({type:"ping"}))
     if (request.method === "GET" && url.pathname === "/help") {
       return json({
         ok: true,
-        version: "0.12.0",
+        version: "0.13.0",
         routes: ROUTE_TABLE,
       });
     }
@@ -969,7 +974,7 @@ setInterval(()=>{if(ws&&ws.readyState===1)ws.send(JSON.stringify({type:"ping"}))
     if (request.method === "GET" && url.pathname === "/version") {
       return json({
         ok: true,
-        version: "0.12.0",
+        version: "0.13.0",
         runtime: `bun ${Bun.version}`,
         arch: process.arch,
         platform: process.platform,
@@ -1571,15 +1576,24 @@ setInterval(()=>{if(ws&&ws.readyState===1)ws.send(JSON.stringify({type:"ping"}))
     }
 
     if (request.method === "GET" && url.pathname === "/status") {
-      // Unified overview combining health + version + web config
+      // Unified overview combining health + version + web config + caddy health
       let heapStats: Record<string, unknown> | null = null;
       try {
         const { heapStats: hs } = require("bun:jsc") as { heapStats: () => Record<string, unknown> };
         heapStats = hs();
       } catch {}
+      let caddyHealth: { healthy: boolean; upstreamsHealthy: number; upstreamsTotal: number } | null = null;
+      try {
+        const caddyResp = await fetch("http://127.0.0.1:2019/metrics");
+        const caddyText = await caddyResp.text();
+        const healthyLines = caddyText.split("\n").filter(l => l.startsWith("caddy_reverse_proxy_upstreams_healthy{"));
+        const upstreamsTotal = healthyLines.length;
+        const upstreamsHealthy = healthyLines.filter(l => l.endsWith(" 1")).length;
+        caddyHealth = { healthy: upstreamsHealthy === upstreamsTotal && upstreamsTotal > 0, upstreamsHealthy, upstreamsTotal };
+      } catch {}
       return json({
         ok: true,
-        version: "0.12.0",
+        version: "0.13.0",
         runtime: `bun ${Bun.version}`,
         arch: process.arch,
         platform: process.platform,
@@ -1592,6 +1606,7 @@ setInterval(()=>{if(ws&&ws.readyState===1)ws.send(JSON.stringify({type:"ping"}))
         sseEventLogSize: sseEventLog.length,
         sessions: registry.list().length,
         heap: heapStats,
+        caddy: caddyHealth,
         web: {
           url: config.zellijWebUrl || null,
           tokenSet: config.zellijWebToken ? true : false,
@@ -1791,7 +1806,7 @@ const ROUTE_TABLE: { method: string; path: string; description: string; auth: bo
   { method: "POST", path: "/web/token/refresh", description: "Refresh Zellij web token via CLI (authenticated)", auth: true },
   { method: "POST", path: "/web/token/revoke", description: "Revoke token by name or revoke all (authenticated)", auth: true },
   { method: "GET", path: "/web/tokens", description: "List token names and creation dates (authenticated)", auth: true },
-  { method: "GET", path: "/status", description: "Unified overview (health+version+web+heap)", auth: false },
+  { method: "GET", path: "/status", description: "Unified overview (health+version+web+heap+caddy)", auth: false },
   { method: "GET", path: "/snapshot", description: "Full session state for drift correction", auth: false },
   { method: "GET", path: "/sessions", description: "Active session list", auth: false },
   { method: "GET", path: "/sessions/:id", description: "Session detail lookup", auth: false },
