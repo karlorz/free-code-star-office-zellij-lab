@@ -20,6 +20,7 @@ Environment=XDG_RUNTIME_DIR=/run/user/0
 # Restart policy
 Restart=on-failure
 RestartSec=5
+UMask=0077
 
 # Watchdog: auto-restart if no keep-alive received within 30s
 WatchdogSec=30

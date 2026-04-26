@@ -287,18 +287,28 @@ const server = Bun.serve({
     if (request.method === "GET" && url.pathname.match(/^\/sessions\/[^/]+\/events$/)) {
       const sessionId = decodeURIComponent(url.pathname.split("/")[2]);
       const limit = Math.min(Number(url.searchParams.get("limit") || 50), 200);
+      const sourceFilter = url.searchParams.get("source") || undefined;
+      const eventTypeFilter = url.searchParams.get("event_type") || undefined;
       try {
         const { readFile } = await import("node:fs/promises");
         const content = await readFile(config.eventsLogPath, "utf8");
         const lines = content.trim().split("\n").filter(Boolean);
-        const entries = lines
+        let entries = lines
           .map((line) => { try { return JSON.parse(line); } catch { return null; } })
           .filter(Boolean)
           .filter((e: Record<string, unknown>) => {
             const sig = e.signal as Record<string, unknown> | null;
-            return sig?.sessionId === sessionId;
-          })
-          .slice(-limit);
+            if (!sig || sig.sessionId !== sessionId) return false;
+            if (sourceFilter && e.source !== sourceFilter) return false;
+            if (eventTypeFilter) {
+              const ctx = sig.context as Record<string, unknown> | undefined;
+              const zellijEvt = ctx?.zellijEvent as string | undefined;
+              const evtName = sig.eventName as string | undefined;
+              if (zellijEvt !== eventTypeFilter && evtName !== eventTypeFilter) return false;
+            }
+            return true;
+          });
+        entries = entries.slice(-limit);
         return json({
           ok: true,
           sessionId,
@@ -323,32 +333,6 @@ const server = Bun.serve({
         ok: true,
         session: snapshot,
       });
-    }
-
-    if (request.method === "GET" && url.pathname.match(/^\/sessions\/[^/]+\/events$/)) {
-      const sessionId = decodeURIComponent(url.pathname.split("/")[2]);
-      const limit = Math.min(Number(url.searchParams.get("limit") || 50), 200);
-      try {
-        const { readFile } = await import("node:fs/promises");
-        const content = await readFile(config.eventsLogPath, "utf8");
-        const lines = content.trim().split("\n").filter(Boolean);
-        const entries = lines
-          .map((line) => { try { return JSON.parse(line); } catch { return null; } })
-          .filter(Boolean)
-          .filter((e: Record<string, unknown>) => {
-            const sig = e.signal as Record<string, unknown> | null;
-            return sig?.sessionId === sessionId;
-          })
-          .slice(-limit);
-        return json({
-          ok: true,
-          sessionId,
-          count: entries.length,
-          entries,
-        });
-      } catch {
-        return json({ ok: true, sessionId, count: 0, entries: [] });
-      }
     }
 
     if (request.method === "GET" && url.pathname === "/stats") {
@@ -391,14 +375,30 @@ const server = Bun.serve({
 
     if (request.method === "GET" && url.pathname === "/events/log") {
       const limit = Math.min(Number(url.searchParams.get("limit") || 50), 200);
+      const sourceFilter = url.searchParams.get("source") || undefined;
+      const eventTypeFilter = url.searchParams.get("event_type") || undefined;
       try {
         const { readFile } = await import("node:fs/promises");
         const content = await readFile(config.eventsLogPath, "utf8");
         const lines = content.trim().split("\n").filter(Boolean);
-        const recent = lines.slice(-limit);
-        const entries = recent.map((line) => {
+        let entries = lines.map((line) => {
           try { return JSON.parse(line); } catch { return null; }
         }).filter(Boolean);
+        if (sourceFilter || eventTypeFilter) {
+          entries = entries.filter((e: Record<string, unknown>) => {
+            if (sourceFilter && e.source !== sourceFilter) return false;
+            if (eventTypeFilter) {
+              const sig = e.signal as Record<string, unknown> | null;
+              if (!sig) return false;
+              const ctx = sig.context as Record<string, unknown> | undefined;
+              const zellijEvt = ctx?.zellijEvent as string | undefined;
+              const evtName = sig.eventName as string | undefined;
+              if (zellijEvt !== eventTypeFilter && evtName !== eventTypeFilter) return false;
+            }
+            return true;
+          });
+        }
+        entries = entries.slice(-limit);
         return json({
           ok: true,
           count: entries.length,
