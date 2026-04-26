@@ -29,9 +29,9 @@ PrivateTmp=yes
 # ProtectHome: read-only -- may need to read /root for config
 ProtectHome=read-only
 
-# ProtectSystem: strict with explicit write exceptions
-ProtectSystem=strict
-ReadWritePaths=/root/free-code-star-office-zellij-lab/tmp
+# ProtectSystem: full (read-only /usr, /boot, /etc, /var) — allows /tmp and /root writes
+# strict mode breaks zellij action commands which write to /root/.cache/zellij/
+ProtectSystem=full
 
 NoNewPrivileges=yes
 PrivateDevices=yes
