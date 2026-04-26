@@ -253,7 +253,7 @@ Expected: no output and exit code 0.
 Run:
 
 ```bash
-git grep -n "7db31cc7-3f68-4d36-8646-8fd0b120a5e4" -- . ':!.env'
+git grep -n "<redacted-zellij-web-token>" -- . ':!.env'
 ```
 
 Expected: no output and exit code 1, meaning the token is not tracked. If it prints a match, remove the token before committing.
