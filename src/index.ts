@@ -16,6 +16,7 @@ const SSE_MAX_BUFFERED_MESSAGES = 32; // Drop clients with more than this many b
 let sseEventSeq = 0;
 let sseClientSeq = 0;
 const sseClients = new Map<number, { controller: ReadableStreamDefaultController; buffered: number; connectedAt: number }>();
+const BRIDGE_VERSION = "0.31.0";
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
@@ -332,7 +333,7 @@ function buildPrometheusMetrics(): string {
   // Build info metric — standard pattern for version identification from Prometheus queries
   lines.push(`# HELP bridge_info Bridge build information`);
   lines.push(`# TYPE bridge_info gauge`);
-  const versionStr = "0.31.0";
+  const versionStr = BRIDGE_VERSION;
   lines.push(`bridge_info{version="${versionStr}",runtime="bun_${Bun.version}",arch="${process.arch}",platform="${process.platform}"} 1`);
   // SSE metrics
   lines.push(`# HELP bridge_sse_clients_current Current SSE client connections`);
@@ -1252,7 +1253,7 @@ setInterval(()=>{fetch("/status").then(r=>r.json()).then(d=>{
     if (request.method === "GET" && url.pathname === "/help") {
       return json({
         ok: true,
-        version: versionStr,
+        version: BRIDGE_VERSION,
         routes: ROUTE_TABLE,
       });
     }
@@ -1260,7 +1261,7 @@ setInterval(()=>{fetch("/status").then(r=>r.json()).then(d=>{
     if (request.method === "GET" && url.pathname === "/version") {
       return json({
         ok: true,
-        version: versionStr,
+        version: BRIDGE_VERSION,
         runtime: `bun ${Bun.version}`,
         arch: process.arch,
         platform: process.platform,
@@ -2203,7 +2204,7 @@ setInterval(()=>{fetch("/status").then(r=>r.json()).then(d=>{
       } catch {}
       return json({
         ok: true,
-        version: versionStr,
+        version: BRIDGE_VERSION,
         runtime: `bun ${Bun.version}`,
         arch: process.arch,
         platform: process.platform,
