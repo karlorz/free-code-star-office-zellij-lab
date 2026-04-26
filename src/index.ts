@@ -1112,7 +1112,7 @@ setInterval(()=>{fetch("/status").then(r=>r.json()).then(d=>{
     if (request.method === "GET" && url.pathname === "/help") {
       return json({
         ok: true,
-        version: "0.21.0",
+        version: "0.22.0",
         routes: ROUTE_TABLE,
       });
     }
@@ -1120,7 +1120,7 @@ setInterval(()=>{fetch("/status").then(r=>r.json()).then(d=>{
     if (request.method === "GET" && url.pathname === "/version") {
       return json({
         ok: true,
-        version: "0.21.0",
+        version: "0.22.0",
         runtime: `bun ${Bun.version}`,
         arch: process.arch,
         platform: process.platform,
@@ -1510,6 +1510,124 @@ setInterval(()=>{fetch("/status").then(r=>r.json()).then(d=>{
           entries: [],
           error: "log file not found or unreadable",
         });
+      }
+    }
+
+    if (request.method === "GET" && url.pathname === "/events/log/stats") {
+      try {
+        const { createReadStream } = await import("node:fs");
+        const { createInterface } = await import("node:readline");
+        const logStat = await stat(config.eventsLogPath);
+        const stream = createReadStream(config.eventsLogPath, { encoding: "utf8" });
+        const rl = createInterface({ input: stream, crlfDelay: Infinity });
+        const sourceCounts: Record<string, number> = {};
+        const eventCounts: Record<string, number> = {};
+        let totalEntries = 0;
+        let ignoredEntries = 0;
+        let oldestTs: string | null = null;
+        let newestTs: string | null = null;
+        let minSeq: number | null = null;
+        let maxSeq: number | null = null;
+        for await (const line of rl) {
+          if (!line.trim()) continue;
+          try {
+            const entry = JSON.parse(line);
+            totalEntries++;
+            const src = typeof entry.source === "string" ? entry.source : "unknown";
+            sourceCounts[src] = (sourceCounts[src] || 0) + 1;
+            if (entry.ignored) ignoredEntries++;
+            const sig = entry.signal as Record<string, unknown> | null;
+            if (sig) {
+              const evt = typeof sig.eventName === "string" ? sig.eventName : "unknown";
+              eventCounts[evt] = (eventCounts[evt] || 0) + 1;
+            }
+            const ts = typeof entry.receivedAt === "string" ? entry.receivedAt : null;
+            if (ts) {
+              if (!oldestTs || ts < oldestTs) oldestTs = ts;
+              if (!newestTs || ts > newestTs) newestTs = ts;
+            }
+            const seq = typeof entry.sseEventSeq === "number" ? entry.sseEventSeq : null;
+            if (seq !== null) {
+              if (minSeq === null || seq < minSeq) minSeq = seq;
+              if (maxSeq === null || seq > maxSeq) maxSeq = seq;
+            }
+          } catch { /* skip malformed */ }
+        }
+        return json({
+          ok: true,
+          fileSizeBytes: logStat.size,
+          fileSizeMB: Number((logStat.size / 1024 / 1024).toFixed(2)),
+          maxFileSizeMB: EVENTS_LOG_MAX_BYTES / 1024 / 1024,
+          rotationNeeded: logStat.size > EVENTS_LOG_MAX_BYTES * 0.8,
+          totalEntries,
+          ignoredEntries,
+          activeEntries: totalEntries - ignoredEntries,
+          oldestTimestamp: oldestTs,
+          newestTimestamp: newestTs,
+          seqRange: minSeq !== null && maxSeq !== null ? { min: minSeq, max: maxSeq, span: maxSeq - minSeq } : null,
+          bySource: sourceCounts,
+          byEvent: eventCounts,
+        });
+      } catch {
+        return json({ ok: true, fileSizeBytes: 0, totalEntries: 0, error: "log file not found" });
+      }
+    }
+
+    if (request.method === "POST" && url.pathname === "/events/log/compact") {
+      if (!isAuthorized(request)) {
+        return json({ ok: false, error: "authentication required" }, { status: 401 });
+      }
+      try {
+        const { readFile, writeFile, rename: renameFile } = await import("node:fs/promises");
+        const content = await readFile(config.eventsLogPath, "utf8");
+        const lines = content.trim().split("\n").filter(Boolean);
+        const retained: string[] = [];
+        let removedIgnored = 0;
+        const maxAge = url.searchParams.get("max_age_hours");
+        const cutoffMs = maxAge ? Date.now() - Number(maxAge) * 3600 * 1000 : 0;
+        let removedExpired = 0;
+        for (const line of lines) {
+          try {
+            const entry = JSON.parse(line);
+            // Remove ignored events (they have no signal data worth keeping)
+            if (entry.ignored) {
+              removedIgnored++;
+              continue;
+            }
+            // Remove entries older than max_age_hours if specified
+            if (maxAge && entry.receivedAt) {
+              const entryMs = new Date(entry.receivedAt as string).getTime();
+              if (entryMs < cutoffMs) {
+                removedExpired++;
+                continue;
+              }
+            }
+            retained.push(line);
+          } catch {
+            // Keep malformed lines (don't lose data we can't parse)
+            retained.push(line);
+          }
+        }
+        // Write compacted log atomically: write to temp then rename
+        const tmpPath = `${config.eventsLogPath}.compact.tmp`;
+        await writeFile(tmpPath, retained.join("\n") + "\n", "utf8");
+        await renameFile(tmpPath, config.eventsLogPath);
+        const newSize = (await stat(config.eventsLogPath)).size;
+        return json({
+          ok: true,
+          originalLines: lines.length,
+          retainedLines: retained.length,
+          removedIgnored,
+          removedExpired,
+          originalSizeMB: Number((content.length / 1024 / 1024).toFixed(2)),
+          newSizeMB: Number((newSize / 1024 / 1024).toFixed(2)),
+          savingsMB: Number(((content.length - newSize) / 1024 / 1024).toFixed(2)),
+        });
+      } catch (error) {
+        return json({
+          ok: false,
+          error: error instanceof Error ? error.message : String(error),
+        }, { status: 500 });
       }
     }
 
@@ -1904,7 +2022,7 @@ setInterval(()=>{fetch("/status").then(r=>r.json()).then(d=>{
       } catch {}
       return json({
         ok: true,
-        version: "0.21.0",
+        version: "0.22.0",
         runtime: `bun ${Bun.version}`,
         arch: process.arch,
         platform: process.platform,
@@ -2105,6 +2223,8 @@ const ROUTE_TABLE: { method: string; path: string; description: string; auth: bo
   { method: "GET", path: "/events/recent", description: "Recent event log (sequential IDs)", auth: false },
   { method: "GET", path: "/events/log", description: "Persistent event history (supports after_seq for catch-up, reads rotated logs)", auth: false },
   { method: "GET", path: "/events/log/tail", description: "Efficient tail of events log (no full-file read, last N lines)", auth: false },
+  { method: "GET", path: "/events/log/stats", description: "Event log statistics: size, entry counts by source/event, seq range", auth: false },
+  { method: "POST", path: "/events/log/compact", description: "Compact log: remove ignored/expired entries (auth required)", auth: true },
   { method: "GET", path: "/events/test", description: "HTML SSE test page", auth: false },
   { method: "POST", path: "/event/manual", description: "Submit manual events", auth: true },
   { method: "POST", path: "/alert", description: "Alertmanager webhook (broadcasts alerts as SSE events)", auth: false },
