@@ -4,7 +4,7 @@ import { loadConfig, timingSafeCompare } from "./config";
 import { SessionRegistry } from "./sessionRegistry";
 import { StarOfficeClient } from "./starOfficeClient";
 import { normalizeClaudeEvent } from "./stateMapper";
-import { sendAction as ipcSendAction, listSessionSockets } from "./zellijIpc";
+import { sendAction as ipcSendAction, ping as ipcPing, listSessionSockets } from "./zellijIpc";
 import type {
   BridgeErrorInfo,
   BridgeEventLogEntry,
@@ -17,7 +17,7 @@ const SSE_MAX_BUFFERED_MESSAGES = 32; // Drop clients with more than this many b
 let sseEventSeq = 0;
 let sseClientSeq = 0;
 const sseClients = new Map<number, { controller: ReadableStreamDefaultController; buffered: number; connectedAt: number }>();
-const BRIDGE_VERSION = "0.46.0";
+const BRIDGE_VERSION = "0.47.0";
 
 // Shared environment for zellij CLI subprocess calls
 function zellijEnv(session?: string): Record<string, string | undefined> {
@@ -76,6 +76,8 @@ const metrics = {
   wsClientsCurrent: 0,
   dedupEvicted: 0,
   gcTriggers: 0,
+  zellijSessionHealthy: 1,  // gauge: 1=healthy, 0=unhealthy
+  zellijHealthConsecutiveFailures: 0,
   startTime: Date.now(),
 };
 
@@ -501,6 +503,10 @@ function buildPrometheusMetrics(): string {
   lines.push(`# HELP bridge_gc_triggers_total Number of manual GC triggers via /debug/gc`);
   lines.push(`# TYPE bridge_gc_triggers_total counter`);
   lines.push(`bridge_gc_triggers_total ${metrics.gcTriggers}`);
+  // Zellij session health gauge
+  lines.push(`# HELP bridge_zellij_session_healthy Whether the zellij session server is responsive via IPC (1=healthy, 0=unhealthy)`);
+  lines.push(`# TYPE bridge_zellij_session_healthy gauge`);
+  lines.push(`bridge_zellij_session_healthy ${metrics.zellijSessionHealthy}`);
   // Heap object count from cached heapStats (JSC engine)
   const heapObjCount = cachedHeapStats?.objectCount as number | undefined;
   if (heapObjCount !== undefined) {
@@ -762,6 +768,44 @@ const snapshotPushInterval = setInterval(() => {
   }
 }, 60_000);
 
+// Periodic zellij session health check: ping via IPC every 30s.
+// Tracks consecutive failures and exposes bridge_zellij_session_healthy gauge.
+// Logs transitions (healthy→unhealthy, unhealthy→healthy) only.
+const zellijHealthInterval = setInterval(async () => {
+  if (isShuttingDown) return;
+  const session = config.zellijSessionName || "main";
+  try {
+    await ipcPing(session);
+    if (metrics.zellijSessionHealthy === 0) {
+      console.log(`[bridge] zellij session "${session}" is healthy again (was unhealthy)`);
+    }
+    metrics.zellijSessionHealthy = 1;
+    metrics.zellijHealthConsecutiveFailures = 0;
+  } catch (err) {
+    metrics.zellijHealthConsecutiveFailures++;
+    if (metrics.zellijSessionHealthy === 1) {
+      console.warn(`[bridge] zellij session "${session}" is unhealthy: ${err instanceof Error ? err.message : String(err)}`);
+    }
+    // Require 3 consecutive failures before flipping gauge to 0
+    if (metrics.zellijHealthConsecutiveFailures >= 3 && metrics.zellijSessionHealthy === 1) {
+      metrics.zellijSessionHealthy = 0;
+      console.warn(`[bridge] zellij session "${session}" marked unhealthy after ${metrics.zellijHealthConsecutiveFailures} consecutive failures`);
+    }
+  }
+}, 30_000);
+
+// Periodic save-session via IPC: trigger zellij serialization every 60s
+// to keep resurrection data fresh. Only runs when session is healthy.
+const zellijSaveInterval = setInterval(async () => {
+  if (isShuttingDown || metrics.zellijSessionHealthy === 0) return;
+  const session = config.zellijSessionName || "main";
+  try {
+    await ipcSendAction(session, "save-session");
+  } catch {
+    // Non-critical — session will auto-serialize periodically anyway
+  }
+}, 60_000);
+
 let isShuttingDown = false;
 
 // Track background subprocesses for clean shutdown
@@ -795,6 +839,8 @@ async function gracefulShutdown(signal: string): Promise<void> {
   clearInterval(logFlushInterval);
   clearInterval(heapStatsInterval);
   clearInterval(compactionInterval);
+  clearInterval(zellijHealthInterval);
+  clearInterval(zellijSaveInterval);
 
   // Drain window for in-flight requests
   await Bun.sleep(2000);
