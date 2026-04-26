@@ -1,0 +1,12 @@
+apiVersion: 1
+providers:
+  - name: Star Office Bridge
+    orgId: 1
+    folder: Star Office
+    type: file
+    disableDeletion: false
+    updateFolderNs: true
+    allowUiUpdates: true
+    options:
+      path: /etc/grafana/provisioning/dashboards/json
+      foldersFromFilesStructure: true

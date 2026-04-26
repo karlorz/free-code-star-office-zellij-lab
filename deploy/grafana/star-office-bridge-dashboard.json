@@ -1,0 +1,127 @@
+{
+  "annotations": { "list": [] },
+  "description": "Star Office Bridge + Caddy + Zellij monitoring",
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "title": "Bridge Health",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
+      "targets": [
+        { "expr": "bridge_uptime_seconds", "legendFormat": "Uptime (s)", "refId": "A" },
+        { "expr": "bridge_sse_clients_current", "legendFormat": "SSE Clients", "refId": "B" },
+        { "expr": "bridge_ws_clients_current", "legendFormat": "WS Clients", "refId": "C" },
+        { "expr": "bridge_sse_event_log_size", "legendFormat": "Event Log", "refId": "D" }
+      ],
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "thresholds" }, "thresholds": { "steps": [{ "color": "green", "value": null }] } },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "Uptime (s)" }, "properties": [{ "id": "unit", "value": "s" }] }
+        ]
+      }
+    },
+    {
+      "title": "Caddy Upstream Health",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 },
+      "targets": [
+        { "expr": "sum(caddy_reverse_proxy_upstreams_healthy)", "legendFormat": "Healthy", "refId": "A" },
+        { "expr": "count(caddy_reverse_proxy_upstreams_healthy)", "legendFormat": "Total", "refId": "B" }
+      ],
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "thresholds" }, "thresholds": { "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 1 }] } }
+      }
+    },
+    {
+      "title": "Bridge Memory",
+      "type": "gauge",
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 0 },
+      "targets": [
+        { "expr": "bridge_process_memory_rss_bytes / on(instance) (node_memory_MemTotal_bytes or on(instance) vector(1073741824))", "legendFormat": "RSS %", "refId": "A" }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "thresholds": { "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 0.7 }, { "color": "red", "value": 0.85 }] },
+          "max": 1
+        }
+      }
+    },
+    {
+      "title": "Signal Rate",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+      "targets": [
+        { "expr": "rate(bridge_signals_processed_total[5m])", "legendFormat": "Processed/s", "refId": "A" },
+        { "expr": "rate(bridge_signals_duplicate_total[5m])", "legendFormat": "Duplicate/s", "refId": "B" },
+        { "expr": "rate(bridge_star_office_apply_total[5m])", "legendFormat": "Apply OK/s", "refId": "C" },
+        { "expr": "rate(bridge_star_office_apply_failures_total[5m])", "legendFormat": "Apply Fail/s", "refId": "D" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "ops" } }
+    },
+    {
+      "title": "HTTP Request Duration p95",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
+      "targets": [
+        { "expr": "bridge:http_request_duration:p95", "legendFormat": "Bridge p95", "refId": "A" },
+        { "expr": "caddy:request_duration:p95 * 1000", "legendFormat": "Caddy p95", "refId": "B" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "ms" } }
+    },
+    {
+      "title": "SSE / WebSocket Activity",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },
+      "targets": [
+        { "expr": "bridge_sse_clients_current", "legendFormat": "SSE Clients", "refId": "A" },
+        { "expr": "bridge_ws_clients_current", "legendFormat": "WS Clients", "refId": "B" },
+        { "expr": "rate(bridge_sse_broadcasts_total[5m])", "legendFormat": "Broadcasts/s", "refId": "C" },
+        { "expr": "rate(bridge_ws_messages_total[5m])", "legendFormat": "WS Msgs/s", "refId": "D" },
+        { "expr": "rate(bridge_sse_client_evicted_total[5m])", "legendFormat": "Evicted/s", "refId": "E" }
+      ]
+    },
+    {
+      "title": "Alert Webhook Activity",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 12 },
+      "targets": [
+        { "expr": "rate(bridge_alerts_received_total[5m])", "legendFormat": "Alerts/s", "refId": "A" },
+        { "expr": "rate(bridge_rate_limit_rejections_total[5m])", "legendFormat": "Rate Limited/s", "refId": "B" },
+        { "expr": "rate(bridge_token_refreshes_total[5m])", "legendFormat": "Token Refreshes/s", "refId": "C" },
+        { "expr": "rate(bridge_token_revocations_total[5m])", "legendFormat": "Token Revocations/s", "refId": "D" }
+      ]
+    },
+    {
+      "title": "Dedup Suppression Rate",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 20 },
+      "targets": [
+        { "expr": "bridge:signal_dedup_ratio:rate5m", "legendFormat": "Dedup Ratio", "refId": "A" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "percentunit" } }
+    },
+    {
+      "title": "Caddy 5xx Error Rate",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 20 },
+      "targets": [
+        { "expr": "caddy:error_5xx_ratio:rate3m", "legendFormat": "5xx Ratio", "refId": "A" },
+        { "expr": "sum(rate(caddy_http_request_duration_seconds_count{code=~\"5..\"}[3m]))", "legendFormat": "5xx Req/s", "refId": "B" }
+      ],
+      "fieldConfig": { "overrides": [{ "matcher": { "id": "byName", "options": "5xx Ratio" }, "properties": [{ "id": "unit", "value": "percentunit" }] }] }
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "tags": ["star-office-bridge", "caddy", "zellij"],
+  "templating": { "list": [] },
+  "time": { "from": "now-1h", "to": "now" },
+  "title": "Star Office Bridge",
+  "uid": "star-office-bridge",
+  "version": 1
+}
