@@ -305,8 +305,23 @@ async function handleRequest(request: Request, url: URL): Promise<Response> {
                     return;
                   }
                 }
+              } else {
+                // Stale Last-Event-ID: event older than ring buffer — send gap notification
+                const gapStart = requestedId;
+                const gapEnd = sseEventLog.length > 0 ? sseEventLog[0].id - 1 : sseEventSeq;
+                const gapSize = gapEnd - gapStart;
+                try {
+                  controller.enqueue(formatSSE({
+                    gapStart,
+                    gapEnd,
+                    gapSize,
+                    suggestion: "replay unavailable — use /snapshot or /events/recent for full state",
+                  }, "gap", ++sseEventSeq));
+                } catch {
+                  sseClients.delete(clientId);
+                  return;
+                }
               }
-              // Stale Last-Event-ID (older than ring buffer): snapshot already sent above
             }
           }
           request.signal.addEventListener("abort", () => {
