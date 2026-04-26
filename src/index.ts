@@ -619,6 +619,8 @@ const server = Bun.serve({
     return response;
   },
   websocket: {
+    maxPayloadLength: 65536, // 64KB max WS message (default 16MB is too generous for action commands)
+    sendPings: true, // Protocol-level pings keep idle connections alive; closed after idleTimeout
     open(ws) {
       const data = ws.data as unknown as { authenticated: boolean; connectedAt: number; sessionId?: string };
       console.log(`[bridge] ws client connected authed=${data.authenticated} session=${data.sessionId || "none"} total=${server.subscriberCount("bridge-events") + 1}`);
