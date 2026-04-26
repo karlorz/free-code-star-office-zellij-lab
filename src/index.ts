@@ -17,7 +17,7 @@ const SSE_MAX_BUFFERED_MESSAGES = 32; // Drop clients with more than this many b
 let sseEventSeq = 0;
 let sseClientSeq = 0;
 const sseClients = new Map<number, { controller: ReadableStreamDefaultController; buffered: number; connectedAt: number }>();
-const BRIDGE_VERSION = "0.37.0";
+const BRIDGE_VERSION = "0.38.0";
 
 // Shared environment for zellij CLI subprocess calls
 function zellijEnv(session?: string): Record<string, string | undefined> {
@@ -560,6 +560,7 @@ const IPC_ELIGIBLE = new Set([
   "toggle-floating-panes", "focus-next-pane", "focus-previous-pane",
   "detach", "no-op", "scroll-up", "scroll-down", "scroll-to-bottom", "scroll-to-top",
   "clear-screen", "dump-screen", "dump-layout", "save-session", "rename-session",
+  "resize", "write", "write-chars", "move-pane",
 ]);
 
 function checkRateLimit(request: Request): string | null {

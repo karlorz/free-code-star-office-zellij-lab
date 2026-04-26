@@ -19,6 +19,7 @@ let root: protobuf.Root | null = null;
 let ClientToServerMsg: protobuf.Type | null = null;
 let ServerToClientMsg: protobuf.Type | null = null;
 let ActionType: protobuf.Type | null = null;
+let protoReady: Promise<void> | null = null;
 
 async function loadProto() {
   if (ClientToServerMsg) return;
@@ -28,6 +29,13 @@ async function loadProto() {
   ServerToClientMsg = ns.lookupType("ServerToClientMsg");
   ActionType = ns.lookupType("Action");
 }
+
+// Eagerly load proto at module import — eliminates ~5s cold-start on first IPC call.
+// Bun supports top-level await; other runtimes will lazy-load on first sendAction().
+protoReady = loadProto().catch((err) => {
+  console.warn(`[zellij-ipc] proto pre-load failed, will retry on first call:`, err instanceof Error ? err.message : String(err));
+  protoReady = null; // Reset so next call will retry
+});
 
 /**
  * Discover the UDS socket path for a zellij session.
@@ -46,6 +54,10 @@ function sessionSocketPath(sessionName: string): string {
  * the 5s wait caused by the server keeping the connection open for render updates.
  */
 async function sendAndReceive(socketPath: string, msg: Record<string, unknown>): Promise<Record<string, unknown>[]> {
+  // Wait for eager pre-load if in flight, otherwise lazy-load
+  if (protoReady) {
+    await protoReady;
+  }
   await loadProto();
 
   const payload = ClientToServerMsg!.create(msg);
@@ -122,7 +134,7 @@ async function sendAndReceive(socketPath: string, msg: Record<string, unknown>):
  * Proto JSON uses keepCase=true (snake_case): list_tabs, not listTabs.
  * Maps CLI action names to protobuf snake_case field names.
  */
-function buildActionMsg(actionName: string, _args?: string[], isCliClient = true): Record<string, unknown> {
+function buildActionMsg(actionName: string, args?: string[], isCliClient = true): Record<string, unknown> {
   const ACTION_MAP: Record<string, string> = {
     "list-tabs": "list_tabs",
     "list-panes": "list_panes",
@@ -204,7 +216,32 @@ function buildActionMsg(actionName: string, _args?: string[], isCliClient = true
 
   // Query actions need output_json=true to get structured results
   const JSON_OUTPUT_ACTIONS = new Set(["list_tabs", "list_panes", "list_clients", "current_tab_info", "query_tab_names"]);
-  if (JSON_OUTPUT_ACTIONS.has(fieldName)) {
+
+  // Actions that accept args via the proto message fields
+  if (fieldName === "resize" && args?.[0]) {
+    // resize accepts: increase, decrease (maps to ResizeType enum)
+    const RESIZE_MAP: Record<string, number> = { "increase": 1, "decrease": 2 };
+    const DIRECTION_MAP: Record<string, number> = { "left": 1, "right": 2, "up": 3, "down": 4 };
+    action[fieldName] = {
+      resize: RESIZE_MAP[args[0]] ?? 1,
+      direction: DIRECTION_MAP[args[1]] ?? 0,
+    };
+  } else if (fieldName === "write_chars" && args?.[0]) {
+    action[fieldName] = { chars: args[0] };
+  } else if (fieldName === "write" && args?.[0]) {
+    // write accepts UTF-8 bytes as repeated uint32
+    const bytes = Array.from(new TextEncoder().encode(args[0]));
+    action[fieldName] = { bytes };
+  } else if (fieldName === "move_focus" && args?.[0]) {
+    const DIRECTION_MAP: Record<string, number> = { "left": 1, "right": 2, "up": 3, "down": 4 };
+    action[fieldName] = { direction: DIRECTION_MAP[args[0]] ?? 0 };
+  } else if (fieldName === "move_focus_or_tab" && args?.[0]) {
+    const DIRECTION_MAP: Record<string, number> = { "left": 1, "right": 2, "up": 3, "down": 4 };
+    action[fieldName] = { direction: DIRECTION_MAP[args[0]] ?? 0 };
+  } else if (fieldName === "move_pane" && args?.[0]) {
+    const DIRECTION_MAP: Record<string, number> = { "left": 1, "right": 2, "up": 3, "down": 4 };
+    action[fieldName] = { direction: DIRECTION_MAP[args[0]] ?? 0 };
+  } else if (JSON_OUTPUT_ACTIONS.has(fieldName)) {
     action[fieldName] = { output_json: true };
   } else {
     action[fieldName] = {};
