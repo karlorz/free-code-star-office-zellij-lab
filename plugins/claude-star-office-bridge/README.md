@@ -42,7 +42,13 @@
   - `PostCompact`
 
 - `hooks-handlers/send-hook.sh`
-  Reads hook payload JSON from stdin and posts it to the local bridge.
+  Legacy command-hook handler. Kept for fallback but superseded by native HTTP hooks.
+
+## Hook Transport
+
+All 27 events use `type: "http"` hooks that POST directly to the bridge URL. Claude Code sends the event JSON as the request body with `Content-Type: application/json`. The bridge normalizes the native format (`hook_event_name` at top level) into its existing `event_name` + `payload` envelope.
+
+The `send-hook.sh` command-hook handler remains in the repo as a fallback for runtimes that do not support native HTTP hooks.
 
 ## Environment
 
@@ -50,9 +56,9 @@
   Bridge base URL. Default: `http://127.0.0.1:4317`
 
 - `CLAUDE_STAR_BRIDGE_SECRET`
-  Optional shared secret, sent as `x-bridge-secret`.
+  Optional shared secret, sent as `X-Bridge-Secret`.
 
 ## Notes
 
 - This plugin is a lab draft, not a marketplace-ready package.
-- The bridge is the compatibility layer. If `free-code` emits slightly different hook payloads than official Claude Code, fix the mapper in `src/stateMapper.ts` rather than making the shell handler more complex.
+- The bridge is the compatibility layer. If `free-code` emits slightly different hook payloads than official Claude Code, fix the mapper in `src/stateMapper.ts` rather than making the handler more complex.
