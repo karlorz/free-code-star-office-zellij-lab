@@ -743,6 +743,115 @@ es.onmessage=e=>{add("other",e.type+": "+e.data)};
       return processSignal(signal, "zellij-hook");
     }
 
+    if (request.method === "POST" && url.pathname === "/hook/zellij/batch") {
+      let events: Record<string, unknown>[];
+      try {
+        events = (await request.json()) as Record<string, unknown>[];
+        if (!Array.isArray(events)) {
+          return json({ ok: false, error: "expected JSON array" }, { status: 400 });
+        }
+      } catch {
+        return json({ ok: false, error: "invalid json" }, { status: 400 });
+      }
+
+      const results: { index: number; ok: boolean; ignored?: boolean; reason?: string }[] = [];
+      for (let i = 0; i < events.length; i++) {
+        const body = events[i];
+        const zellijEvent = typeof body.zellij_event === "string" ? body.zellij_event : "unknown";
+        const sessionId = typeof body.session_id === "string" ? body.session_id : "zellij-monitor";
+        const cwd = typeof body.cwd === "string" ? body.cwd : "/";
+
+        let state: NormalizedSignal["state"];
+        let detail: string;
+        switch (zellijEvent) {
+          case "pane_update":
+            state = "syncing";
+            detail = `pane_update: ${body.total_panes ?? "?"} panes`;
+            break;
+          case "tab_update":
+            state = "syncing";
+            detail = `tab_update: ${body.tab_count ?? "?"} tabs, active=${typeof body.active_tab === "string" ? body.active_tab : "?"}`;
+            break;
+          case "cwd_change":
+            state = "executing";
+            detail = `cwd_change: ${cwd}`;
+            break;
+          case "command_change":
+            state = "executing";
+            detail = `command_change: ${typeof body.terminal_command === "string" ? body.terminal_command : "?"}`;
+            break;
+          case "pane_content":
+            state = "executing";
+            detail = `pane_content: pane=${body.pane_id ?? "?"} lines=${body.viewport_lines ?? "?"}`;
+            break;
+          case "pane_exit":
+            state = "idle";
+            detail = `pane_exit: exit=${body.exit_status ?? "?"} held=${body.is_held ?? "?"}`;
+            break;
+          case "client_update":
+            state = "syncing";
+            detail = `client_update: ${body.client_count ?? "?"} clients`;
+            break;
+          default:
+            state = "syncing";
+            detail = zellijEvent;
+        }
+
+        const signal: NormalizedSignal = {
+          sessionId,
+          agentName: "main",
+          scope: "main",
+          state,
+          detail,
+          eventName: typeof body.hook_event_name === "string" ? body.hook_event_name : "ZellijEvent",
+          shouldLeave: false,
+          context: {
+            cwd,
+            zellijEvent,
+            zellijPaneCount: body.total_panes != null ? Number(body.total_panes) : undefined,
+            zellijTabCount: body.tab_count != null ? Number(body.tab_count) : undefined,
+            zellijFocusedTitles: Array.isArray(body.focused_titles) ? body.focused_titles.map(String) : undefined,
+            zellijActiveTab: typeof body.active_tab === "string" ? body.active_tab : undefined,
+            zellijTerminalCommand: typeof body.terminal_command === "string" ? body.terminal_command : undefined,
+            zellijExitStatus: body.exit_status != null ? Number(body.exit_status) : (body.exit_status === null ? null : undefined),
+            zellijIsHeld: typeof body.is_held === "boolean" ? body.is_held : undefined,
+            zellijIsFloating: typeof body.is_floating === "boolean" ? body.is_floating : undefined,
+            zellijClientCount: body.client_count != null ? Number(body.client_count) : undefined,
+            zellijTabNames: Array.isArray(body.tabs) ? body.tabs.map(String) : undefined,
+            zellijPaneId: typeof body.pane_id === "string" ? body.pane_id : undefined,
+            zellijViewportLines: body.viewport_lines != null ? Number(body.viewport_lines) : undefined,
+            zellijViewportHash: typeof body.viewport_hash === "string" ? body.viewport_hash : undefined,
+            zellijLastLine: typeof body.last_line === "string" ? body.last_line : undefined,
+          },
+        };
+
+        // Use processSignal logic inline to avoid double-response
+        const { snapshot, signal: resolvedSignal } = registry.record(signal);
+        const dedupeKey = `${resolvedSignal.sessionId}:${resolvedSignal.context.zellijEvent || resolvedSignal.eventName}`;
+        const contextHash = JSON.stringify(resolvedSignal.context);
+        const lastHash = lastSignalByKey.get(dedupeKey);
+        const isDuplicate = lastHash === contextHash;
+        lastSignalByKey.set(dedupeKey, contextHash);
+        const stats = dedupCounts.get(dedupeKey) || { seen: 0, passed: 0 };
+        stats.seen++;
+        if (!isDuplicate) stats.passed++;
+        dedupCounts.set(dedupeKey, stats);
+
+        if (isDuplicate) {
+          results.push({ index: i, ok: true, ignored: true, reason: "duplicate signal" });
+        } else {
+          broadcastSSE("signal", resolvedSignal);
+          results.push({ index: i, ok: true });
+        }
+      }
+
+      return json({
+        ok: true,
+        processed: results.length,
+        results,
+      });
+    }
+
     if (request.method === "POST" && url.pathname === "/event/manual") {
       let body: {
         sessionId?: string;
