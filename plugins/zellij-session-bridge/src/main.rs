@@ -6,10 +6,15 @@ const HOOK_URL: &str = "http://127.0.0.1:4317/hook/zellij";
 /// A Zellij WASM plugin that monitors session state (panes, tabs) and
 /// posts observed changes to the Star Office Bridge via native HTTP hooks.
 /// Runs headless — render() is empty, update() returns false.
+///
+/// Requires WebAccess and ReadApplicationState permissions.
+/// Pre-grant via ~/.cache/zellij/permissions.kdl for headless operation:
+///   "file:///path/to/zellij-session-bridge.wasm" { WebAccess ReadApplicationState }
 #[derive(Default)]
 struct SessionBridge {
     last_tab_count: usize,
     last_pane_count: usize,
+    permissions_granted: bool,
 }
 
 register_plugin!(SessionBridge);
@@ -21,6 +26,7 @@ impl ZellijPlugin for SessionBridge {
             PermissionType::WebAccess,
         ]);
         subscribe(&[
+            EventType::PermissionRequestResult,
             EventType::PaneUpdate,
             EventType::TabUpdate,
             EventType::WebRequestResult,
@@ -29,7 +35,17 @@ impl ZellijPlugin for SessionBridge {
 
     fn update(&mut self, event: Event) -> bool {
         match &event {
+            Event::PermissionRequestResult(PermissionStatus::Granted) => {
+                self.permissions_granted = true;
+                // Now safe to subscribe to events that require ReadApplicationState
+            }
+            Event::PermissionRequestResult(PermissionStatus::Denied) => {
+                self.permissions_granted = false;
+            }
             Event::PaneUpdate(pane_manifest) => {
+                if !self.permissions_granted {
+                    return false;
+                }
                 let total_panes: usize = pane_manifest.panes.values().map(|v| v.len()).sum();
                 let focused: Vec<String> = pane_manifest
                     .panes
@@ -46,6 +62,9 @@ impl ZellijPlugin for SessionBridge {
                 ));
             }
             Event::TabUpdate(tabs) => {
+                if !self.permissions_granted {
+                    return false;
+                }
                 let tab_count = tabs.len();
                 let names: Vec<String> = tabs.iter().map(|t| t.name.clone()).collect();
                 let active = tabs.iter().find(|t| t.active).map(|t| t.name.clone());
@@ -55,9 +74,8 @@ impl ZellijPlugin for SessionBridge {
                     tab_count, names, active
                 ));
             }
-            Event::WebRequestResult(status, _headers, _body, _context) => {
+            Event::WebRequestResult(_status, _headers, _body, _context) => {
                 // Fire-and-forget: silently acknowledge
-                let _ = status;
             }
             _ => {}
         }
