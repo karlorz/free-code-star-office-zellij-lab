@@ -125,6 +125,76 @@ async function appendIgnoredEvent(
   });
 }
 
+function mapZellijEvent(body: Record<string, unknown>): NormalizedSignal {
+  const zellijEvent = typeof body.zellij_event === "string" ? body.zellij_event : "unknown";
+  const sessionId = typeof body.session_id === "string" ? body.session_id : "zellij-monitor";
+  const cwd = typeof body.cwd === "string" ? body.cwd : "/";
+
+  let state: NormalizedSignal["state"];
+  let detail: string;
+  switch (zellijEvent) {
+    case "pane_update":
+      state = "syncing";
+      detail = `pane_update: ${body.total_panes ?? "?"} panes`;
+      break;
+    case "tab_update":
+      state = "syncing";
+      detail = `tab_update: ${body.tab_count ?? "?"} tabs, active=${typeof body.active_tab === "string" ? body.active_tab : "?"}`;
+      break;
+    case "cwd_change":
+      state = "executing";
+      detail = `cwd_change: ${cwd}`;
+      break;
+    case "command_change":
+      state = "executing";
+      detail = `command_change: ${typeof body.terminal_command === "string" ? body.terminal_command : "?"}`;
+      break;
+    case "pane_content":
+      state = "executing";
+      detail = `pane_content: pane=${body.pane_id ?? "?"} lines=${body.viewport_lines ?? "?"}`;
+      break;
+    case "pane_exit":
+      state = "idle";
+      detail = `pane_exit: exit=${body.exit_status ?? "?"} held=${body.is_held ?? "?"}`;
+      break;
+    case "client_update":
+      state = "syncing";
+      detail = `client_update: ${body.client_count ?? "?"} clients`;
+      break;
+    default:
+      state = "syncing";
+      detail = zellijEvent;
+  }
+
+  return {
+    sessionId,
+    agentName: "main",
+    scope: "main",
+    state,
+    detail,
+    eventName: typeof body.hook_event_name === "string" ? body.hook_event_name : "ZellijEvent",
+    shouldLeave: false,
+    context: {
+      cwd,
+      zellijEvent,
+      zellijPaneCount: body.total_panes != null ? Number(body.total_panes) : undefined,
+      zellijTabCount: body.tab_count != null ? Number(body.tab_count) : undefined,
+      zellijFocusedTitles: Array.isArray(body.focused_titles) ? body.focused_titles.map(String) : undefined,
+      zellijActiveTab: typeof body.active_tab === "string" ? body.active_tab : undefined,
+      zellijTerminalCommand: typeof body.terminal_command === "string" ? body.terminal_command : undefined,
+      zellijExitStatus: body.exit_status != null ? Number(body.exit_status) : (body.exit_status === null ? null : undefined),
+      zellijIsHeld: typeof body.is_held === "boolean" ? body.is_held : undefined,
+      zellijIsFloating: typeof body.is_floating === "boolean" ? body.is_floating : undefined,
+      zellijClientCount: body.client_count != null ? Number(body.client_count) : undefined,
+      zellijTabNames: Array.isArray(body.tabs) ? body.tabs.map(String) : undefined,
+      zellijPaneId: typeof body.pane_id === "string" ? body.pane_id : undefined,
+      zellijViewportLines: body.viewport_lines != null ? Number(body.viewport_lines) : undefined,
+      zellijViewportHash: typeof body.viewport_hash === "string" ? body.viewport_hash : undefined,
+      zellijLastLine: typeof body.last_line === "string" ? body.last_line : undefined,
+    },
+  };
+}
+
 function isAuthorized(request: Request): boolean {
   if (!config.secret) {
     return true;
@@ -136,6 +206,20 @@ function isAuthorized(request: Request): boolean {
 const rateLimits = new Map<string, { count: number; windowStart: number }>();
 const RATE_LIMIT_WINDOW = 60_000; // 1 minute
 const RATE_LIMIT_MAX = 120; // requests per window
+
+const ALLOWED_ACTIONS = new Set([
+  "new-tab", "close-tab", "close-tab-by-id", "go-to-tab", "go-to-tab-by-id", "go-to-tab-name",
+  "go-to-next-tab", "go-to-previous-tab", "rename-tab",
+  "new-pane", "close-pane", "focus-next-pane", "focus-previous-pane", "focus-pane-id",
+  "toggle-fullscreen", "toggle-pane-embed-or-floating", "toggle-floating-panes",
+  "show-floating-panes", "hide-floating-panes",
+  "move-focus", "move-focus-or-tab", "resize",
+  "write", "write-chars", "switch-mode",
+  "dump-screen", "dump-layout", "current-tab-info",
+  "start-or-reload-plugin", "launch-or-focus-plugin",
+  "list-clients", "list-panes", "list-tabs",
+  "subscribe",
+]);
 
 function checkRateLimit(request: Request): string | null {
   const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "local";
@@ -671,74 +755,7 @@ es.onmessage=e=>{add("other",e.type+": "+e.data)};
         return json({ ok: false, error: "invalid json" }, { status: 400 });
       }
 
-      const zellijEvent = typeof body.zellij_event === "string" ? body.zellij_event : "unknown";
-      const sessionId = typeof body.session_id === "string" ? body.session_id : "zellij-monitor";
-      const cwd = typeof body.cwd === "string" ? body.cwd : "/";
-
-      // Map Zellij events to office states
-      let state: NormalizedSignal["state"];
-      let detail: string;
-      switch (zellijEvent) {
-        case "pane_update":
-          state = "syncing";
-          detail = `pane_update: ${body.total_panes ?? "?"} panes`;
-          break;
-        case "tab_update":
-          state = "syncing";
-          detail = `tab_update: ${body.tab_count ?? "?"} tabs, active=${typeof body.active_tab === "string" ? body.active_tab : "?"}`;
-          break;
-        case "cwd_change":
-          state = "executing";
-          detail = `cwd_change: ${cwd}`;
-          break;
-        case "command_change":
-          state = "executing";
-          detail = `command_change: ${typeof body.terminal_command === "string" ? body.terminal_command : "?"}`;
-          break;
-        case "pane_content":
-          state = "executing";
-          detail = `pane_content: pane=${body.pane_id ?? "?"} lines=${body.viewport_lines ?? "?"}`;
-          break;
-        case "pane_exit":
-          state = "idle";
-          detail = `pane_exit: exit=${body.exit_status ?? "?"} held=${body.is_held ?? "?"}`;
-          break;
-        case "client_update":
-          state = "syncing";
-          detail = `client_update: ${body.client_count ?? "?"} clients`;
-          break;
-        default:
-          state = "syncing";
-          detail = zellijEvent;
-      }
-
-      const signal: NormalizedSignal = {
-        sessionId,
-        agentName: "main",
-        scope: "main",
-        state,
-        detail,
-        eventName: typeof body.hook_event_name === "string" ? body.hook_event_name : "ZellijEvent",
-        shouldLeave: false,
-        context: {
-          cwd,
-          zellijEvent,
-          zellijPaneCount: body.total_panes != null ? Number(body.total_panes) : undefined,
-          zellijTabCount: body.tab_count != null ? Number(body.tab_count) : undefined,
-          zellijFocusedTitles: Array.isArray(body.focused_titles) ? body.focused_titles.map(String) : undefined,
-          zellijActiveTab: typeof body.active_tab === "string" ? body.active_tab : undefined,
-          zellijTerminalCommand: typeof body.terminal_command === "string" ? body.terminal_command : undefined,
-          zellijExitStatus: body.exit_status != null ? Number(body.exit_status) : (body.exit_status === null ? null : undefined),
-          zellijIsHeld: typeof body.is_held === "boolean" ? body.is_held : undefined,
-          zellijIsFloating: typeof body.is_floating === "boolean" ? body.is_floating : undefined,
-          zellijClientCount: body.client_count != null ? Number(body.client_count) : undefined,
-          zellijTabNames: Array.isArray(body.tabs) ? body.tabs.map(String) : undefined,
-          zellijPaneId: typeof body.pane_id === "string" ? body.pane_id : undefined,
-          zellijViewportLines: body.viewport_lines != null ? Number(body.viewport_lines) : undefined,
-          zellijViewportHash: typeof body.viewport_hash === "string" ? body.viewport_hash : undefined,
-          zellijLastLine: typeof body.last_line === "string" ? body.last_line : undefined,
-        },
-      };
+      const signal = mapZellijEvent(body);
 
       return processSignal(signal, "zellij-hook");
     }
@@ -756,77 +773,10 @@ es.onmessage=e=>{add("other",e.type+": "+e.data)};
 
       const results: { index: number; ok: boolean; ignored?: boolean; reason?: string }[] = [];
       for (let i = 0; i < events.length; i++) {
-        const body = events[i];
-        const zellijEvent = typeof body.zellij_event === "string" ? body.zellij_event : "unknown";
-        const sessionId = typeof body.session_id === "string" ? body.session_id : "zellij-monitor";
-        const cwd = typeof body.cwd === "string" ? body.cwd : "/";
+        const signal = mapZellijEvent(events[i]);
 
-        let state: NormalizedSignal["state"];
-        let detail: string;
-        switch (zellijEvent) {
-          case "pane_update":
-            state = "syncing";
-            detail = `pane_update: ${body.total_panes ?? "?"} panes`;
-            break;
-          case "tab_update":
-            state = "syncing";
-            detail = `tab_update: ${body.tab_count ?? "?"} tabs, active=${typeof body.active_tab === "string" ? body.active_tab : "?"}`;
-            break;
-          case "cwd_change":
-            state = "executing";
-            detail = `cwd_change: ${cwd}`;
-            break;
-          case "command_change":
-            state = "executing";
-            detail = `command_change: ${typeof body.terminal_command === "string" ? body.terminal_command : "?"}`;
-            break;
-          case "pane_content":
-            state = "executing";
-            detail = `pane_content: pane=${body.pane_id ?? "?"} lines=${body.viewport_lines ?? "?"}`;
-            break;
-          case "pane_exit":
-            state = "idle";
-            detail = `pane_exit: exit=${body.exit_status ?? "?"} held=${body.is_held ?? "?"}`;
-            break;
-          case "client_update":
-            state = "syncing";
-            detail = `client_update: ${body.client_count ?? "?"} clients`;
-            break;
-          default:
-            state = "syncing";
-            detail = zellijEvent;
-        }
-
-        const signal: NormalizedSignal = {
-          sessionId,
-          agentName: "main",
-          scope: "main",
-          state,
-          detail,
-          eventName: typeof body.hook_event_name === "string" ? body.hook_event_name : "ZellijEvent",
-          shouldLeave: false,
-          context: {
-            cwd,
-            zellijEvent,
-            zellijPaneCount: body.total_panes != null ? Number(body.total_panes) : undefined,
-            zellijTabCount: body.tab_count != null ? Number(body.tab_count) : undefined,
-            zellijFocusedTitles: Array.isArray(body.focused_titles) ? body.focused_titles.map(String) : undefined,
-            zellijActiveTab: typeof body.active_tab === "string" ? body.active_tab : undefined,
-            zellijTerminalCommand: typeof body.terminal_command === "string" ? body.terminal_command : undefined,
-            zellijExitStatus: body.exit_status != null ? Number(body.exit_status) : (body.exit_status === null ? null : undefined),
-            zellijIsHeld: typeof body.is_held === "boolean" ? body.is_held : undefined,
-            zellijIsFloating: typeof body.is_floating === "boolean" ? body.is_floating : undefined,
-            zellijClientCount: body.client_count != null ? Number(body.client_count) : undefined,
-            zellijTabNames: Array.isArray(body.tabs) ? body.tabs.map(String) : undefined,
-            zellijPaneId: typeof body.pane_id === "string" ? body.pane_id : undefined,
-            zellijViewportLines: body.viewport_lines != null ? Number(body.viewport_lines) : undefined,
-            zellijViewportHash: typeof body.viewport_hash === "string" ? body.viewport_hash : undefined,
-            zellijLastLine: typeof body.last_line === "string" ? body.last_line : undefined,
-          },
-        };
-
-        // Use processSignal logic inline to avoid double-response
-        const { snapshot, signal: resolvedSignal } = registry.record(signal);
+        // Deduplicate inline
+        const { signal: resolvedSignal } = registry.record(signal);
         const dedupeKey = `${resolvedSignal.sessionId}:${resolvedSignal.context.zellijEvent || resolvedSignal.eventName}`;
         const contextHash = JSON.stringify(resolvedSignal.context);
         const lastHash = lastSignalByKey.get(dedupeKey);
@@ -852,24 +802,18 @@ es.onmessage=e=>{add("other",e.type+": "+e.data)};
       });
     }
 
+    if (request.method === "GET" && url.pathname === "/action") {
+      return json({
+        ok: true,
+        actions: [...ALLOWED_ACTIONS].sort(),
+        count: ALLOWED_ACTIONS.size,
+      });
+    }
+
     if (request.method === "POST" && url.pathname === "/action") {
       if (!isAuthorized(request)) {
         return json({ ok: false, error: "action endpoint requires authentication" }, { status: 401 });
       }
-
-      const ALLOWED_ACTIONS = new Set([
-        "new-tab", "close-tab", "close-tab-by-id", "go-to-tab", "go-to-tab-by-id", "go-to-tab-name",
-        "go-to-next-tab", "go-to-previous-tab", "rename-tab",
-        "new-pane", "close-pane", "focus-next-pane", "focus-previous-pane", "focus-pane-id",
-        "toggle-fullscreen", "toggle-pane-embed-or-floating", "toggle-floating-panes",
-        "show-floating-panes", "hide-floating-panes",
-        "move-focus", "move-focus-or-tab", "resize",
-        "write", "write-chars", "switch-mode",
-        "dump-screen", "dump-layout", "current-tab-info",
-        "start-or-reload-plugin", "launch-or-focus-plugin",
-        "list-clients", "list-panes", "list-tabs",
-        "subscribe",
-      ]);
 
       let body: { action: string; args?: string[]; session?: string };
       try {
