@@ -806,5 +806,75 @@ if ignored_missing_name.get("signal") is not None or ignored_missing_name.get("o
     raise SystemExit("expected ignored entries to have null signal/originalSignal")
 PY
 
+echo "[26/31] SSE /events endpoint"
+SSE_OUTPUT="$(mktemp)"
+python3 -u - "${BRIDGE_URL}" <<'PY' >"${SSE_OUTPUT}" 2>&1 &
+import http.client
+import sys
+import time
+import threading
+
+url_parts = sys.argv[1].replace("http://", "").split(":", 1)
+host = url_parts[0]
+port = int(url_parts[1])
+
+conn = http.client.HTTPConnection(host, port)
+conn.request("GET", "/events")
+resp = conn.getresponse()
+print(f"Status: {resp.status}", flush=True)
+print(f"Content-Type: {resp.getheader('Content-Type')}", flush=True)
+print(f"Cache-Control: {resp.getheader('Cache-Control')}", flush=True)
+
+timer = threading.Timer(5, lambda: conn.close())
+timer.start()
+
+try:
+    while True:
+        chunk = resp.read(1)
+        if chunk:
+            sys.stdout.buffer.write(chunk)
+            sys.stdout.buffer.flush()
+        else:
+            break
+except:
+    pass
+PY
+SSE_LISTENER_PID=$!
+sleep 0.5
+
+# Post an event that should be broadcast to the SSE listener
+curl -fsS -X POST "${BRIDGE_URL}/event/manual" \
+  -H "content-type: application/json" \
+  -d '{"sessionId":"smoke-sse-broadcast","scope":"main","state":"researching","detail":"SSE broadcast test"}' >/dev/null
+sleep 1
+
+kill "${SSE_LISTENER_PID}" >/dev/null 2>&1 || true
+wait "${SSE_LISTENER_PID}" >/dev/null 2>&1 || true
+sse_body="$(cat "${SSE_OUTPUT}")"
+rm -f "${SSE_OUTPUT}"
+
+if [[ "${sse_body}" != *"Status: 200"* ]]; then
+  echo "SSE endpoint returned non-200 status" >&2
+  echo "${sse_body}" >&2
+  exit 1
+fi
+if [[ "${sse_body}" != *"text/event-stream"* ]]; then
+  echo "SSE endpoint missing text/event-stream content type" >&2
+  exit 1
+fi
+if [[ "${sse_body}" != *"no-cache"* ]]; then
+  echo "SSE endpoint missing Cache-Control: no-cache header" >&2
+  exit 1
+fi
+if [[ "${sse_body}" != *"event: signal"* ]]; then
+  echo "SSE endpoint did not broadcast signal event" >&2
+  echo "${sse_body}" >&2
+  exit 1
+fi
+if [[ "${sse_body}" != *"smoke-sse-broadcast"* ]]; then
+  echo "SSE broadcast did not contain expected session ID" >&2
+  exit 1
+fi
+
 echo "[31/31] smoke pass"
 echo "smoke test passed"

@@ -1,5 +1,6 @@
 import { mkdir, appendFile } from "node:fs/promises";
 import { dirname } from "node:path";
+import { randomUUID } from "node:crypto";
 import { loadConfig } from "./config";
 import { SessionRegistry } from "./sessionRegistry";
 import { StarOfficeClient } from "./starOfficeClient";
@@ -10,6 +11,29 @@ import type {
   ClaudeBridgeEvent,
   NormalizedSignal,
 } from "./types";
+
+const sseClients = new Set<ReadableStreamDefaultController>();
+const encoder = new TextEncoder();
+
+function formatSSE(data: unknown, event?: string, id?: string): Uint8Array {
+  const parts: string[] = [];
+  if (id) parts.push(`id: ${id}`);
+  if (event) parts.push(`event: ${event}`);
+  parts.push(`data: ${JSON.stringify(data)}`);
+  parts.push("", "");
+  return encoder.encode(parts.join("\n"));
+}
+
+function broadcastSSE(event: string, payload: unknown): void {
+  const message = formatSSE(payload, event, randomUUID());
+  for (const controller of sseClients) {
+    try {
+      controller.enqueue(message);
+    } catch {
+      sseClients.delete(controller);
+    }
+  }
+}
 
 const config = loadConfig();
 const registry = new SessionRegistry();
@@ -103,6 +127,8 @@ async function processSignal(
     ignoreReason: null,
   });
 
+  broadcastSSE("signal", resolvedSignal);
+
   if (starOfficeError) {
     return json({
       ok: false,
@@ -121,6 +147,17 @@ async function processSignal(
   });
 }
 
+const keepAliveInterval = setInterval(() => {
+  const ping = encoder.encode(": ping\n\n");
+  for (const controller of sseClients) {
+    try {
+      controller.enqueue(ping);
+    } catch {
+      sseClients.delete(controller);
+    }
+  }
+}, 15_000);
+
 const server = Bun.serve({
   hostname: config.host,
   port: config.port,
@@ -129,6 +166,27 @@ const server = Bun.serve({
 
     if (!isAuthorized(request) && request.method !== "GET") {
       return json({ ok: false, error: "unauthorized" }, { status: 401 });
+    }
+
+    if (request.method === "GET" && url.pathname === "/events") {
+      server.timeout(request, 0);
+      const stream = new ReadableStream({
+        start(controller) {
+          sseClients.add(controller);
+          request.signal.addEventListener("abort", () => {
+            sseClients.delete(controller);
+            try {
+              controller.close();
+            } catch {}
+          });
+        },
+      });
+      return new Response(stream, {
+        headers: {
+          "Content-Type": "text/event-stream",
+          "Cache-Control": "no-cache",
+        },
+      });
     }
 
     if (request.method === "GET" && url.pathname === "/health") {
