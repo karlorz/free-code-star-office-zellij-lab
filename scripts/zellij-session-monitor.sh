@@ -9,7 +9,7 @@ set -euo pipefail
 
 # Graceful shutdown on SIGTERM/SIGINT
 _running=true
-trap '_running=false' TERM INT
+trap 'echo "[zellij-monitor] received shutdown signal" >&2; _running=false' TERM INT
 
 BRIDGE_URL="${BRIDGE_URL:-http://127.0.0.1:4317}"
 HOOK_PATH="${HOOK_PATH:-/hook/zellij}"
@@ -214,7 +214,6 @@ for p in json.load(sys.stdin):
 
   # Check for shutdown signal between poll cycles
   if [[ "$_running" != "true" ]]; then
-    echo "[zellij-monitor] received shutdown signal, exiting" >&2
     exit 0
   fi
 
