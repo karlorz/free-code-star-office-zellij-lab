@@ -35,11 +35,15 @@ const metrics = {
   sseClientConnected: 0,
   sseClientDisconnected: 0,
   sseClientEvicted: 0,
+  sseReplayRequests: 0,     // Last-Event-ID reconnects
+  sseReplaySuccesses: 0,    // Successful replays from ring buffer
+  sseReplayGaps: 0,         // Stale Last-Event-ID → gap notification
   signalsProcessed: 0,
   signalsDuplicate: 0,
   actionsExecuted: 0,
   tokenRefreshes: 0,
   tokenRevocations: 0,
+  rateLimitRejections: 0,
   wsConnections: 0,
   wsMessages: 0,
   startTime: Date.now(),
@@ -282,6 +286,15 @@ function buildPrometheusMetrics(): string {
   lines.push(`# HELP bridge_sse_client_evicted_total Total SSE clients evicted for slow consumption`);
   lines.push(`# TYPE bridge_sse_client_evicted_total counter`);
   lines.push(`bridge_sse_client_evicted_total ${metrics.sseClientEvicted}`);
+  lines.push(`# HELP bridge_sse_replay_requests_total Total SSE Last-Event-ID replay requests`);
+  lines.push(`# TYPE bridge_sse_replay_requests_total counter`);
+  lines.push(`bridge_sse_replay_requests_total ${metrics.sseReplayRequests}`);
+  lines.push(`# HELP bridge_sse_replay_successes_total Total successful SSE replays from ring buffer`);
+  lines.push(`# TYPE bridge_sse_replay_successes_total counter`);
+  lines.push(`bridge_sse_replay_successes_total ${metrics.sseReplaySuccesses}`);
+  lines.push(`# HELP bridge_sse_replay_gaps_total Total SSE replay gaps (stale Last-Event-ID)`);
+  lines.push(`# TYPE bridge_sse_replay_gaps_total counter`);
+  lines.push(`bridge_sse_replay_gaps_total ${metrics.sseReplayGaps}`);
   lines.push(`# HELP bridge_sse_event_log_size Current event log ring buffer size`);
   lines.push(`# TYPE bridge_sse_event_log_size gauge`);
   lines.push(`bridge_sse_event_log_size ${sseEventLog.length}`);
@@ -306,6 +319,10 @@ function buildPrometheusMetrics(): string {
   lines.push(`# HELP bridge_token_revocations_total Total Zellij web token revocations`);
   lines.push(`# TYPE bridge_token_revocations_total counter`);
   lines.push(`bridge_token_revocations_total ${metrics.tokenRevocations}`);
+  // Rate limit metrics
+  lines.push(`# HELP bridge_rate_limit_rejections_total Total requests rejected by rate limiter`);
+  lines.push(`# TYPE bridge_rate_limit_rejections_total counter`);
+  lines.push(`bridge_rate_limit_rejections_total ${metrics.rateLimitRejections}`);
   // WebSocket metrics
   lines.push(`# HELP bridge_ws_connections_total Total WebSocket connections established`);
   lines.push(`# TYPE bridge_ws_connections_total counter`);
@@ -674,6 +691,7 @@ async function handleRequest(request: Request, url: URL): Promise<Response> {
     if (request.method === "POST") {
       const limited = checkRateLimit(request);
       if (limited) {
+        metrics.rateLimitRejections++;
         return json({ ok: false, error: "rate limited", retryAfterMs: RATE_LIMIT_WINDOW }, { status: 429 });
       }
     }
@@ -709,10 +727,12 @@ async function handleRequest(request: Request, url: URL): Promise<Response> {
           if (lastEventId) {
             const requestedId = Number(lastEventId);
             if (!isNaN(requestedId)) {
+              metrics.sseReplayRequests++;
               // O(1) replay index: since IDs are sequential integers, compute directly
               const oldestId = sseEventLog.length > 0 ? sseEventLog[0].id : sseEventSeq + 1;
               const replayIndex = requestedId >= oldestId ? requestedId - oldestId : -1;
               if (replayIndex >= 0 && replayIndex < sseEventLog.length) {
+                metrics.sseReplaySuccesses++;
                 // Found the event — replay everything after it (skip ephemeral client events)
                 for (const entry of sseEventLog.slice(replayIndex + 1)) {
                   if (entry.event === "client_connected" || entry.event === "client_disconnected") continue;
@@ -724,6 +744,7 @@ async function handleRequest(request: Request, url: URL): Promise<Response> {
                   }
                 }
               } else {
+                metrics.sseReplayGaps++;
                 // Stale Last-Event-ID: event older than ring buffer — send gap notification
                 const gapStart = requestedId;
                 const gapEnd = sseEventLog.length > 0 ? sseEventLog[0].id - 1 : sseEventSeq;
