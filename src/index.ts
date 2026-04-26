@@ -17,7 +17,7 @@ const SSE_MAX_BUFFERED_MESSAGES = 32; // Drop clients with more than this many b
 let sseEventSeq = 0;
 let sseClientSeq = 0;
 const sseClients = new Map<number, { controller: ReadableStreamDefaultController; buffered: number; connectedAt: number }>();
-const BRIDGE_VERSION = "0.57.0";
+const BRIDGE_VERSION = "0.58.0";
 
 // Shared environment for zellij CLI subprocess calls
 function zellijEnv(session?: string): Record<string, string | undefined> {
@@ -925,6 +925,9 @@ async function gracefulShutdown(signal: string): Promise<void> {
   if (isShuttingDown) return;
   isShuttingDown = true;
   console.log(`[bridge] received ${signal}, draining ${sseClients.size} SSE clients, ${metrics.wsClientsCurrent} WS clients...`);
+
+  // Notify systemd we're stopping — allows ordered dependency shutdown
+  sdNotify("--stopping");
 
   // Stop accepting new connections — in-flight requests can still complete
   server.stop(false);
@@ -2870,3 +2873,19 @@ const ROUTE_TABLE: { method: string; path: string; description: string; auth: bo
 console.log(
   `[bridge] listening on http://${server.hostname}:${server.port} dryRun=${config.dryRun} starOffice=${config.starOfficeUrl || "none"}`,
 );
+
+// Notify systemd of service state changes (Type=notify)
+// Uses systemd-notify CLI which writes to NOTIFY_SOCKET via AF_UNIX datagram.
+// The watchdog wrapper already sends READY=1, but STOPPING=1 from the bridge
+// itself lets systemd know the service is winding down before it exits.
+function sdNotify(state: string): void {
+  if (!process.env.NOTIFY_SOCKET) return;
+  try {
+    Bun.spawn(["systemd-notify", state], { stdout: "ignore", stderr: "ignore" });
+  } catch {
+    // Non-critical: systemd Type=notify just takes longer to report ready
+  }
+}
+
+// Notify systemd that the bridge is ready (supplements watchdog's --ready)
+sdNotify("--ready");
