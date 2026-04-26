@@ -106,6 +106,17 @@
       "fieldConfig": { "defaults": { "unit": "percentunit" } }
     },
     {
+      "title": "IPC Hit Rate",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 20 },
+      "targets": [
+        { "expr": "bridge:ipc_hit_ratio:rate5m", "legendFormat": "IPC Hit Ratio", "refId": "A" },
+        { "expr": "sum(rate(bridge_ipc_actions_total[5m]))", "legendFormat": "IPC Actions/s", "refId": "B" },
+        { "expr": "sum(rate(bridge_cli_actions_total[5m]))", "legendFormat": "CLI Actions/s", "refId": "C" }
+      ],
+      "fieldConfig": { "overrides": [{ "matcher": { "id": "byName", "options": "IPC Hit Ratio" }, "properties": [{ "id": "unit", "value": "percentunit" }] }] }
+    },
+    {
       "title": "Caddy 5xx Error Rate",
       "type": "timeseries",
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 20 },

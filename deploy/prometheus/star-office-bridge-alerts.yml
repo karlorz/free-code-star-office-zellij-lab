@@ -254,6 +254,12 @@ groups:
           sum(caddy_reverse_proxy_upstreams_healthy)
           / count(caddy_reverse_proxy_upstreams_healthy)
 
+      # IPC hit rate: fraction of actions served via IPC vs CLI
+      - record: bridge:ipc_hit_ratio:rate5m
+        expr: |
+          sum(rate(bridge_ipc_actions_total[5m]))
+          / (sum(rate(bridge_ipc_actions_total[5m])) + sum(rate(bridge_cli_actions_total[5m])))
+
       # Histogram quantile rules: these avoid recomputing rate()+sum by(le) per query
       - record: bridge:http_request_duration:p95
         expr: |
