@@ -31,24 +31,24 @@ post_event() {
 echo "[zellij-monitor] watching session: ${SESSION_NAME} interval: ${POLL_INTERVAL}s bridge: ${BRIDGE_URL}"
 
 while true; do
-  # Get pane count
+  # Get pane count (skip header line)
   pane_output="$(ZELLIJ_SESSION_NAME="$SESSION_NAME" zellij action list-panes 2>/dev/null || echo '')"
   if [[ -n "$pane_output" ]]; then
-    pane_count="$(echo "$pane_output" | grep -c '^terminal_' || true)"
+    pane_count="$(echo "$pane_output" | tail -n +2 | grep -c '^terminal_' || true)"
     if [[ "$pane_count" -ne "$last_pane_count" ]]; then
-      focused="$(echo "$pane_output" | grep 'terminal_' | head -1 | awk '{print $3}' | sed 's/"//g')"
+      focused="$(echo "$pane_output" | tail -n +2 | grep '^terminal_' | head -1 | awk '{print $NF}')"
       post_event "{\"hook_event_name\":\"FileChanged\",\"session_id\":\"zellij-monitor\",\"cwd\":\"/\",\"zellij_event\":\"pane_update\",\"total_panes\":$pane_count,\"focused_titles\":[\"$focused\"]}"
       last_pane_count="$pane_count"
     fi
   fi
 
-  # Get tab info
+  # Get tab info (skip header line)
   tab_output="$(ZELLIJ_SESSION_NAME="$SESSION_NAME" zellij action list-tabs 2>/dev/null || echo '')"
   if [[ -n "$tab_output" ]]; then
-    tab_count="$(echo "$tab_output" | wc -l | tr -d ' ')"
+    tab_count="$(echo "$tab_output" | tail -n +2 | wc -l | tr -d ' ')"
     if [[ "$tab_count" -ne "$last_tab_count" || "$tab_output" != "$last_tabs" ]]; then
-      active="$(echo "$tab_output" | grep -oP '(?<=\[active\]) \S+' | head -1 || echo '')"
-      post_event "{\"hook_event_name\":\"CwdChanged\",\"session_id\":\"zellij-monitor\",\"cwd\":\"/\",\"zellij_event\":\"tab_update\",\"tab_count\":$tab_count,\"active_tab\":\"$active\"}"
+      tab_names="$(echo "$tab_output" | tail -n +2 | awk '{print $3}' | tr '\n' ',' | sed 's/,$//')"
+      post_event "{\"hook_event_name\":\"CwdChanged\",\"session_id\":\"zellij-monitor\",\"cwd\":\"/\",\"zellij_event\":\"tab_update\",\"tab_count\":$tab_count,\"tabs\":\"$tab_names\"}"
       last_tab_count="$tab_count"
       last_tabs="$tab_output"
     fi
