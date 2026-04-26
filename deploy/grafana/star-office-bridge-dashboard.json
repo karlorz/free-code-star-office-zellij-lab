@@ -97,6 +97,16 @@
       ]
     },
     {
+      "title": "Zellij Recovery & WS Zombies",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 28 },
+      "targets": [
+        { "expr": "bridge_zellij_recovery_attempts_total", "legendFormat": "Recovery Attempts", "refId": "A" },
+        { "expr": "bridge_zellij_recovery_successes_total", "legendFormat": "Recovery OK", "refId": "B" },
+        { "expr": "rate(bridge_ws_client_timeouts_total[5m])", "legendFormat": "WS Zombies/s", "refId": "C" }
+      ]
+    },
+    {
       "title": "Dedup Suppression Rate",
       "type": "timeseries",
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 20 },
