@@ -241,6 +241,10 @@ const server = Bun.serve({
         port: config.port,
         dryRun: config.dryRun,
         starOfficeUrl: config.starOfficeUrl || null,
+        sseClients: sseClients.size,
+        sseEventLogSize: sseEventLog.length,
+        sessions: registry.list().length,
+        uptime: process.uptime(),
       });
     }
 
