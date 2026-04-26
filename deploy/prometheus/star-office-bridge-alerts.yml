@@ -265,6 +265,20 @@ groups:
             {{ $value | printf "%.1f" }} SSE clients evicted/sec for slow consumption.
             May indicate consumer overload, upstream latency spike, or network issues.
 
+      # WARNING: Zellij save-session failures — session may not survive crash
+      - alert: BridgeZellijSaveFailures
+        expr: rate(bridge_zellij_save_failures_total[10m]) > 0
+        for: 10m
+        labels:
+          severity: warning
+          service: star-office-bridge
+        annotations:
+          summary: "Zellij save-session failures on {{ $labels.instance }}"
+          description: >-
+            {{ $value | printf "%.1f" }} save-session failures/sec.
+            Session serialization is failing — session may not survive a crash.
+            Check zellij cache directory permissions and IPC connectivity.
+
   # ── Recording Rules ────────────────────────────────────────────────
   # Only rules that genuinely accelerate queries are kept.
   # Trivial rate() on low-cardinality single-instance counters are removed —
