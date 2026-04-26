@@ -49,9 +49,6 @@ function broadcastSSEWithId(id: number, event: string, payload: unknown): number
   for (const [cid, client] of sseClients) {
     try {
       client.controller.enqueue(message);
-      // Successful enqueue means the stream absorbed it — no accumulation
-      // buffered tracks pending writes that haven't been flushed yet
-      // Check backpressure: drop slow clients
       if (client.buffered > SSE_MAX_BUFFERED_MESSAGES) {
         console.warn(`[bridge] dropping slow SSE client ${cid} (${client.buffered} buffered messages)`);
         try {
@@ -61,7 +58,6 @@ function broadcastSSEWithId(id: number, event: string, payload: unknown): number
         sseClients.delete(cid);
       }
     } catch {
-      // Enqueue failed — increment buffer count for this stalled client
       client.buffered++;
       if (client.buffered > SSE_MAX_BUFFERED_MESSAGES) {
         console.warn(`[bridge] dropping stalled SSE client ${cid} (${client.buffered} failed enqueues)`);
@@ -69,6 +65,10 @@ function broadcastSSEWithId(id: number, event: string, payload: unknown): number
       }
     }
   }
+  // Also publish to WebSocket subscribers
+  try {
+    server.publish("bridge-events", JSON.stringify({ type: event, id, data: payload }));
+  } catch {}
   return id;
 }
 
@@ -373,14 +373,96 @@ const server = Bun.serve({
   hostname: config.host,
   port: config.port,
   idleTimeout: 255, // Max allowed — prevents SSE streams from being killed during quiet periods
-  fetch: async (request: Request): Promise<Response> => {
+  fetch: async (request: Request, srv: any): Promise<Response | undefined> => {
     const url = new URL(request.url);
+
+    // WebSocket upgrade for bidirectional interactive consumers
+    if (url.pathname === "/ws") {
+      const authed = isAuthorized(request);
+      const upgraded = srv.upgrade(request, {
+        data: {
+          authenticated: authed,
+          connectedAt: Date.now(),
+          sessionId: url.searchParams.get("session") || undefined,
+        },
+      });
+      if (upgraded) return undefined; // Bun handles 101
+      return json({ ok: false, error: "websocket upgrade failed" }, { status: 400 });
+    }
+
     const start = performance.now();
 
     const response = await handleRequest(request, url);
     const duration = (performance.now() - start).toFixed(1);
     console.log(`[bridge] ${request.method} ${url.pathname} ${response.status} ${duration}ms`);
     return response;
+  },
+  websocket: {
+    open(ws) {
+      const data = ws.data as unknown as { authenticated: boolean; connectedAt: number; sessionId?: string };
+      console.log(`[bridge] ws client connected authed=${data.authenticated} session=${data.sessionId || "none"}`);
+      // Subscribe to the event broadcast channel
+      ws.subscribe("bridge-events");
+      // Send initial snapshot
+      const snapshot = registry.list();
+      ws.send(JSON.stringify({ type: "snapshot", data: snapshot }));
+    },
+    async message(ws, message) {
+      const data = ws.data as unknown as { authenticated: boolean };
+      const text = typeof message === "string" ? message : message.toString();
+      let parsed: Record<string, unknown>;
+      try {
+        parsed = JSON.parse(text);
+      } catch {
+        ws.send(JSON.stringify({ type: "error", error: "invalid json" }));
+        return;
+      }
+
+      const msgType = typeof parsed.type === "string" ? parsed.type : "unknown";
+
+      // Authenticated actions over WebSocket
+      if (!data.authenticated && msgType !== "ping") {
+        ws.send(JSON.stringify({ type: "error", error: "authentication required for actions" }));
+        return;
+      }
+
+      switch (msgType) {
+        case "ping":
+          ws.send(JSON.stringify({ type: "pong", ts: Date.now() }));
+          break;
+        case "action": {
+          // Execute a Zellij action via WebSocket (same logic as POST /action)
+          const action = typeof parsed.action === "string" ? parsed.action : "";
+          const args = Array.isArray(parsed.args) ? parsed.args.map(String) : [];
+          if (!action || !ALLOWED_ACTIONS.has(action)) {
+            ws.send(JSON.stringify({ type: "action_result", ok: false, error: "disallowed action", action }));
+            return;
+          }
+          const spawnArgs = ["action", action, ...args];
+          if (config.zellijSessionName) spawnArgs.push("--session", config.zellijSessionName);
+          try {
+            const proc = Bun.spawn(["zellij", ...spawnArgs], {
+              stdout: "pipe",
+              stderr: "pipe",
+              env: { ...process.env, HOME: "/root", XDG_RUNTIME_DIR: "/run/user/0", ZELLIJ_SESSION_NAME: config.zellijSessionName || "" },
+            });
+            const exitCode = proc.exitCode;
+            const stdout = proc.stdout ? await new Response(proc.stdout).text() : "";
+            ws.send(JSON.stringify({ type: "action_result", ok: exitCode === 0, action, args, exitCode, stdout: stdout.slice(0, 4096) }));
+          } catch (error) {
+            ws.send(JSON.stringify({ type: "action_result", ok: false, action, error: String(error) }));
+          }
+          break;
+        }
+        default:
+          ws.send(JSON.stringify({ type: "error", error: `unknown message type: ${msgType}` }));
+      }
+    },
+    close(ws, code, reason) {
+      const data = ws.data as unknown as { sessionId?: string };
+      console.log(`[bridge] ws client disconnected code=${code} session=${data.sessionId || "none"}`);
+      ws.unsubscribe("bridge-events");
+    },
   },
 });
 
