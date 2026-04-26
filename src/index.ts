@@ -17,7 +17,7 @@ const SSE_MAX_BUFFERED_MESSAGES = 32; // Drop clients with more than this many b
 let sseEventSeq = 0;
 let sseClientSeq = 0;
 const sseClients = new Map<number, { controller: ReadableStreamDefaultController; buffered: number; connectedAt: number }>();
-const BRIDGE_VERSION = "0.48.0";
+const BRIDGE_VERSION = "0.49.0";
 
 // Shared environment for zellij CLI subprocess calls
 function zellijEnv(session?: string): Record<string, string | undefined> {
@@ -771,6 +771,52 @@ const snapshotPushInterval = setInterval(() => {
 // Periodic zellij session health check: ping via IPC every 30s.
 // Tracks consecutive failures and exposes bridge_zellij_session_healthy gauge.
 // Logs transitions (healthy→unhealthy, unhealthy→healthy) only.
+// On transition to unhealthy, attempts auto-recovery via zellij attach.
+let zellijLastRecoveryAttempt = 0;
+const ZELLIJ_RECOVERY_COOLDOWN_MS = 5 * 60 * 1000; // 5 min between recovery attempts
+
+async function attemptZellijRecovery(session: string): Promise<boolean> {
+  // Check if session socket is truly gone (not just a transient error)
+  const sockets = listSessionSockets();
+  if (sockets.includes(session)) {
+    console.log(`[bridge] zellij session "${session}" socket still exists, skipping recovery (may be hung)`);
+    return false;
+  }
+
+  console.log(`[bridge] attempting zellij session recovery for "${session}"...`);
+  try {
+    const proc = Bun.spawn({
+      cmd: ["zellij", "attach", "-c", session],
+      env: zellijEnv(session),
+      stdout: "ignore",
+      stderr: "pipe",
+    });
+    const exitCode = await Promise.race([proc.exited, Bun.sleep(10000).then(() => { proc.kill(); return -1; })]);
+    if (exitCode !== 0) {
+      const stderr = await new Response(proc.stderr).text();
+      console.warn(`[bridge] zellij attach failed (exit=${exitCode}): ${stderr.slice(0, 200)}`);
+      return false;
+    }
+
+    // Wait for session server to be ready, then verify with ping
+    await Bun.sleep(2000);
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        await ipcPing(session);
+        console.log(`[bridge] zellij session "${session}" recovered successfully`);
+        return true;
+      } catch {
+        await Bun.sleep(2000);
+      }
+    }
+    console.warn(`[bridge] zellij session "${session}" attach succeeded but ping still failing`);
+    return false;
+  } catch (err) {
+    console.warn(`[bridge] zellij recovery spawn failed: ${err instanceof Error ? err.message : String(err)}`);
+    return false;
+  }
+}
+
 const zellijHealthInterval = setInterval(async () => {
   if (isShuttingDown) return;
   const session = config.zellijSessionName || "main";
@@ -790,6 +836,13 @@ const zellijHealthInterval = setInterval(async () => {
     if (metrics.zellijHealthConsecutiveFailures >= 3 && metrics.zellijSessionHealthy === 1) {
       metrics.zellijSessionHealthy = 0;
       console.warn(`[bridge] zellij session "${session}" marked unhealthy after ${metrics.zellijHealthConsecutiveFailures} consecutive failures`);
+
+      // Auto-recovery: attempt zellij attach with cooldown
+      const now = Date.now();
+      if (now - zellijLastRecoveryAttempt > ZELLIJ_RECOVERY_COOLDOWN_MS) {
+        zellijLastRecoveryAttempt = now;
+        attemptZellijRecovery(session).catch(() => {});
+      }
     }
   }
 }, 30_000);
@@ -955,7 +1008,11 @@ const server = Bun.serve({
     const statusKey = `${pathKey}:${response.status}`;
     metrics.httpResponsesTotal.set(statusKey, (metrics.httpResponsesTotal.get(statusKey) || 0) + 1);
     observeHistogram(pathKey, duration);
-    console.log(`[bridge] ${request.method} ${url.pathname} ${response.status} ${duration.toFixed(1)}ms`);
+    // Suppress noisy log lines for health/metrics probes (polled every 15-30s)
+    const SILENT_PATHS = new Set(["/healthz", "/metrics", "/metrics/combined"]);
+    if (!SILENT_PATHS.has(pathKey)) {
+      console.log(`[bridge] ${request.method} ${url.pathname} ${response.status} ${duration.toFixed(1)}ms`);
+    }
     return response;
   },
   websocket: {
