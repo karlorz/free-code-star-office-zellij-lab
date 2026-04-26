@@ -133,6 +133,17 @@
       "targets": [
         { "expr": "bridge_heap_object_count", "legendFormat": "JSC Objects", "refId": "A" }
       ]
+    },
+    {
+      "title": "Firing Alerts",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 24, "x": 0, "y": 36 },
+      "targets": [
+        { "expr": "ALERTS{alertstate=\"firing\"}", "legendFormat": "{{ alertname }}", "refId": "A" }
+      ],
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "thresholds" }, "thresholds": { "steps": [{ "color": "green", "value": null }, { "color": "red", "value": 1 }] } }
+      }
     }
   ],
   "refresh": "30s",

@@ -319,6 +319,10 @@ function buildPrometheusMetrics(): string {
   lines.push(`# HELP bridge_uptime_seconds Process uptime in seconds`);
   lines.push(`# TYPE bridge_uptime_seconds gauge`);
   lines.push(`bridge_uptime_seconds ${uptime.toFixed(2)}`);
+  // Build info metric — standard pattern for version identification from Prometheus queries
+  lines.push(`# HELP bridge_info Bridge build information`);
+  lines.push(`# TYPE bridge_info gauge`);
+  lines.push(`bridge_info{version="0.28.0",runtime="bun_${Bun.version}",arch="${process.arch}",platform="${process.platform}"} 1`);
   // SSE metrics
   lines.push(`# HELP bridge_sse_clients_current Current SSE client connections`);
   lines.push(`# TYPE bridge_sse_clients_current gauge`);
