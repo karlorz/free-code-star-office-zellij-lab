@@ -17,7 +17,7 @@ const SSE_MAX_BUFFERED_MESSAGES = 32; // Drop clients with more than this many b
 let sseEventSeq = 0;
 let sseClientSeq = 0;
 const sseClients = new Map<number, { controller: ReadableStreamDefaultController; buffered: number; connectedAt: number }>();
-const BRIDGE_VERSION = "0.41.0";
+const BRIDGE_VERSION = "0.42.0";
 
 // Shared environment for zellij CLI subprocess calls
 function zellijEnv(session?: string): Record<string, string | undefined> {
@@ -996,6 +996,12 @@ const server = Bun.serve({
       metrics.wsClientsCurrent--;
       metrics.wsDisconnects++;
       ws.unsubscribe("bridge-events");
+    },
+    // drain handler: called when a previously-backpressured socket is ready to send again
+    // ws.send() returns -1 when buffer is full; Bun calls drain when space is available
+    drain(ws) {
+      // No buffered messages to retry — we use fire-and-forget publish()
+      // Future: if we add per-client buffered queue, flush it here
     },
     // error handler: Bun doesn't expose this in WebSocketHandler types yet,
     // but catching unhandled errors prevents silent connection drops
