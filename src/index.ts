@@ -225,7 +225,16 @@ const server = Bun.serve({
   port: config.port,
   fetch: async (request: Request): Promise<Response> => {
     const url = new URL(request.url);
+    const start = performance.now();
 
+    const response = await handleRequest(request, url);
+    const duration = (performance.now() - start).toFixed(1);
+    console.log(`[bridge] ${request.method} ${url.pathname} ${response.status} ${duration}ms`);
+    return response;
+  },
+});
+
+async function handleRequest(request: Request, url: URL): Promise<Response> {
     if (!isAuthorized(request) && request.method !== "GET") {
       return json({ ok: false, error: "unauthorized" }, { status: 401, headers: CORS_HEADERS });
     }
@@ -630,8 +639,7 @@ const server = Bun.serve({
     }
 
     return json({ ok: false, error: "not found" }, { status: 404 });
-  },
-});
+}
 
 console.log(
   `[bridge] listening on http://${server.hostname}:${server.port} dryRun=${config.dryRun} starOffice=${config.starOfficeUrl || "none"}`,
