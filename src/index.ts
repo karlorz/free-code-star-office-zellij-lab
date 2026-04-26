@@ -57,6 +57,7 @@ const metrics = {
   wsMessages: 0,
   wsClientsCurrent: 0,
   dedupEvicted: 0,
+  gcTriggers: 0,
   startTime: Date.now(),
 };
 
@@ -230,19 +231,10 @@ async function appendIgnoredEvent(
     rawBody?: string;
   } = {},
 ): Promise<void> {
-  await appendEvent({
-    source,
-    receivedAt: new Date().toISOString(),
-    sseEventSeq: null,
-    rawEvent: options.rawEvent ?? null,
-    signal: null,
-    originalSignal: null,
-    starOfficeResult: null,
-    starOfficeError: null,
-    ignored: true,
-    ignoreReason,
-    rawBody: options.rawBody,
-  });
+  // Don't write ignored events to NDJSON log — they have no signal data
+  // and would just waste I/O until compaction removes them.
+  // Increment counter for observability instead.
+  metrics.signalsSuppressed++;
 }
 
 function mapZellijEvent(body: Record<string, unknown>): NormalizedSignal {
@@ -456,6 +448,9 @@ function buildPrometheusMetrics(): string {
   lines.push(`# HELP bridge_dedup_evicted_total Total dedup entries evicted by TTL`);
   lines.push(`# TYPE bridge_dedup_evicted_total counter`);
   lines.push(`bridge_dedup_evicted_total ${metrics.dedupEvicted}`);
+  lines.push(`# HELP bridge_gc_triggers_total Number of manual GC triggers via /debug/gc`);
+  lines.push(`# TYPE bridge_gc_triggers_total counter`);
+  lines.push(`bridge_gc_triggers_total ${metrics.gcTriggers}`);
   // Heap object count from cached heapStats (JSC engine)
   const heapObjCount = cachedHeapStats?.objectCount as number | undefined;
   if (heapObjCount !== undefined) {
@@ -1235,7 +1230,7 @@ setInterval(()=>{fetch("/status").then(r=>r.json()).then(d=>{
     if (request.method === "GET" && url.pathname === "/help") {
       return json({
         ok: true,
-        version: "0.26.0",
+        version: "0.27.0",
         routes: ROUTE_TABLE,
       });
     }
@@ -1243,11 +1238,30 @@ setInterval(()=>{fetch("/status").then(r=>r.json()).then(d=>{
     if (request.method === "GET" && url.pathname === "/version") {
       return json({
         ok: true,
-        version: "0.26.0",
+        version: "0.27.0",
         runtime: `bun ${Bun.version}`,
         arch: process.arch,
         platform: process.platform,
         uptime: process.uptime(),
+      });
+    }
+
+    if (request.method === "POST" && url.pathname === "/debug/gc") {
+      if (!isAuthorized(request)) {
+        return json({ ok: false, error: "authentication required" }, { status: 401 });
+      }
+      const before = process.memoryUsage();
+      const force = url.searchParams.get("force") === "true";
+      Bun.gc(force);
+      const after = process.memoryUsage();
+      metrics.gcTriggers++;
+      console.log(`[bridge] manual gc triggered force=${force} rss: ${before.rss} → ${after.rss} heapUsed: ${before.heapUsed} → ${after.heapUsed}`);
+      return json({
+        ok: true,
+        force,
+        before: { rss: before.rss, heapUsed: before.heapUsed, heapTotal: before.heapTotal },
+        after: { rss: after.rss, heapUsed: after.heapUsed, heapTotal: after.heapTotal },
+        freedHeap: before.heapUsed - after.heapUsed,
       });
     }
 
@@ -2153,7 +2167,7 @@ setInterval(()=>{fetch("/status").then(r=>r.json()).then(d=>{
       } catch {}
       return json({
         ok: true,
-        version: "0.26.0",
+        version: "0.27.0",
         runtime: `bun ${Bun.version}`,
         arch: process.arch,
         platform: process.platform,
@@ -2381,6 +2395,7 @@ const ROUTE_TABLE: { method: string; path: string; description: string; auth: bo
   { method: "GET", path: "/metrics/combined", description: "Bridge + Caddy merged metrics (single scrape target)", auth: false },
   { method: "GET", path: "/version", description: "Bridge version, runtime, arch", auth: false },
   { method: "GET", path: "/diagnostics", description: "Stale pipe detection, log size, dedup summary (authenticated)", auth: true },
+  { method: "POST", path: "/debug/gc", description: "Trigger Bun.gc() for production debugging (authenticated)", auth: true },
   { method: "GET", path: "/debug/heap-snapshot", description: "Generate heap snapshot for leak debugging (authenticated)", auth: true },
   { method: "GET", path: "/ws", description: "WebSocket for bidirectional control (upgrade, auth optional — unauth=read-only)", auth: false },
   { method: "GET", path: "/help", description: "This route table", auth: false },
