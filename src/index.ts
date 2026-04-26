@@ -30,6 +30,7 @@ const encoder = new TextEncoder();
 const metrics = {
   httpRequestsTotal: new Map<string, number>(),  // path -> count
   httpResponsesTotal: new Map<string, number>(),  // "path:status" -> count
+  httpRequestDurationMs: new Map<string, { count: number; sum: number; buckets: Map<string, number> }>(),  // path -> histogram
   sseBroadcasts: 0,
   sseClientConnected: 0,
   sseClientDisconnected: 0,
@@ -43,6 +44,26 @@ const metrics = {
   wsMessages: 0,
   startTime: Date.now(),
 };
+
+// Histogram buckets for HTTP request latency (ms)
+const LATENCY_BUCKETS = [0.1, 0.5, 1, 5, 10, 50, 100, 500, 1000];
+
+function observeHistogram(path: string, durationMs: number): void {
+  let entry = metrics.httpRequestDurationMs.get(path);
+  if (!entry) {
+    entry = { count: 0, sum: 0, buckets: new Map(LATENCY_BUCKETS.map(b => [`le="${b}"`, 0])) };
+    entry.buckets.set('le="+Inf"', 0);
+    metrics.httpRequestDurationMs.set(path, entry);
+  }
+  entry.count++;
+  entry.sum += durationMs;
+  for (const b of LATENCY_BUCKETS) {
+    if (durationMs <= b) {
+      entry.buckets.set(`le="${b}"`, (entry.buckets.get(`le="${b}"`) || 0) + 1);
+    }
+  }
+  entry.buckets.set('le="+Inf"', (entry.buckets.get('le="+Inf"') || 0) + 1);
+}
 
 function formatSSE(data: unknown, event?: string, id?: number): Uint8Array {
   const parts: string[] = [];
@@ -301,6 +322,20 @@ function buildPrometheusMetrics(): string {
   lines.push(`# HELP bridge_process_memory_heap_bytes Process heap memory in bytes`);
   lines.push(`# TYPE bridge_process_memory_heap_bytes gauge`);
   lines.push(`bridge_process_memory_heap_bytes ${mem.heapUsed}`);
+  // HTTP request duration histograms
+  lines.push(`# HELP bridge_http_request_duration_milliseconds HTTP request latency in milliseconds`);
+  lines.push(`# TYPE bridge_http_request_duration_milliseconds histogram`);
+  for (const [path, entry] of metrics.httpRequestDurationMs) {
+    let cumSum = 0;
+    for (const b of LATENCY_BUCKETS) {
+      cumSum += entry.buckets.get(`le="${b}"`) || 0;
+      lines.push(`bridge_http_request_duration_milliseconds_bucket{path="${path}",le="${b}"} ${cumSum}`);
+    }
+    cumSum += entry.buckets.get('le="+Inf"') || 0;
+    lines.push(`bridge_http_request_duration_milliseconds_bucket{path="${path}",le="+Inf"} ${cumSum}`);
+    lines.push(`bridge_http_request_duration_milliseconds_sum{path="${path}"} ${entry.sum.toFixed(2)}`);
+    lines.push(`bridge_http_request_duration_milliseconds_count{path="${path}"} ${entry.count}`);
+  }
   return lines.join("\n") + "\n";
 }
 
@@ -502,13 +537,14 @@ const server = Bun.serve({
     const start = performance.now();
 
     const response = await handleRequest(request, url);
-    const duration = (performance.now() - start).toFixed(1);
+    const duration = performance.now() - start;
     // Track metrics
     const pathKey = url.pathname;
     metrics.httpRequestsTotal.set(pathKey, (metrics.httpRequestsTotal.get(pathKey) || 0) + 1);
     const statusKey = `${pathKey}:${response.status}`;
     metrics.httpResponsesTotal.set(statusKey, (metrics.httpResponsesTotal.get(statusKey) || 0) + 1);
-    console.log(`[bridge] ${request.method} ${url.pathname} ${response.status} ${duration}ms`);
+    observeHistogram(pathKey, duration);
+    console.log(`[bridge] ${request.method} ${url.pathname} ${response.status} ${duration.toFixed(1)}ms`);
     return response;
   },
   websocket: {
