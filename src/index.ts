@@ -15,6 +15,7 @@ import type {
 const SSE_REPLAY_CAPACITY = 64;
 const sseClients = new Set<ReadableStreamDefaultController>();
 const sseEventLog: { id: string; event: string; payload: unknown }[] = [];
+const lastSignalByKey = new Map<string, string>();
 const encoder = new TextEncoder();
 
 function formatSSE(data: unknown, event?: string, id?: string): Uint8Array {
@@ -111,6 +112,23 @@ async function processSignal(
   rawEvent?: ClaudeBridgeEvent,
 ): Promise<Response> {
   const { snapshot, signal: resolvedSignal } = registry.record(signal);
+
+  // Deduplicate consecutive identical signals per session+event
+  const dedupeKey = `${resolvedSignal.sessionId}:${resolvedSignal.context.zellijEvent || resolvedSignal.eventName}`;
+  const contextHash = JSON.stringify(resolvedSignal.context);
+  const lastHash = lastSignalByKey.get(dedupeKey);
+  const isDuplicate = lastHash === contextHash;
+  lastSignalByKey.set(dedupeKey, contextHash);
+
+  if (isDuplicate) {
+    return json({
+      ok: true,
+      ignored: true,
+      reason: "duplicate signal",
+      signal: resolvedSignal,
+      snapshot,
+    });
+  }
 
   let starOfficeResult: unknown;
   let starOfficeError: { message: string; stack?: string } | undefined;
@@ -284,6 +302,33 @@ const server = Bun.serve({
         count: events.length,
         events,
       });
+    }
+
+    if (request.method === "GET" && url.pathname === "/events/log") {
+      const limit = Math.min(Number(url.searchParams.get("limit") || 50), 200);
+      try {
+        const { readFile } = await import("node:fs/promises");
+        const content = await readFile(config.eventsLogPath, "utf8");
+        const lines = content.trim().split("\n").filter(Boolean);
+        const recent = lines.slice(-limit);
+        const entries = recent.map((line) => {
+          try { return JSON.parse(line); } catch { return null; }
+        }).filter(Boolean);
+        return json({
+          ok: true,
+          count: entries.length,
+          totalLines: lines.length,
+          entries,
+        });
+      } catch (error) {
+        return json({
+          ok: true,
+          count: 0,
+          totalLines: 0,
+          entries: [],
+          error: "log file not found or unreadable",
+        });
+      }
     }
 
     if (request.method === "POST" && url.pathname === "/hook/claude") {
