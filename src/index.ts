@@ -242,6 +242,8 @@ const server = Bun.serve({
       const stream = new ReadableStream({
         start(controller) {
           sseClients.set(clientId, controller);
+          // Notify other clients about new connection
+          broadcastSSE("client_connected", { clientId, totalClients: sseClients.size });
           // Send full snapshot on connect so new clients have current state
           const snapshot = registry.list();
           try {
@@ -271,6 +273,7 @@ const server = Bun.serve({
           }
           request.signal.addEventListener("abort", () => {
             sseClients.delete(clientId);
+            broadcastSSE("client_disconnected", { clientId, totalClients: sseClients.size });
             try {
               controller.close();
             } catch {}
