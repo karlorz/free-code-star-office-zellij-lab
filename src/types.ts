@@ -132,4 +132,6 @@ export interface BridgeConfig {
   starOfficeJoinKey?: string;
   mainAgentName: string;
   zellijSessionName?: string;
+  zellijWebUrl?: string;
+  zellijWebToken?: string;
 }

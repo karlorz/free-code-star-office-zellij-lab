@@ -38,6 +38,10 @@ function formatSSE(data: unknown, event?: string, id?: number): Uint8Array {
 
 function broadcastSSE(event: string, payload: unknown): number {
   const id = ++sseEventSeq;
+  return broadcastSSEWithId(id, event, payload);
+}
+
+function broadcastSSEWithId(id: number, event: string, payload: unknown): number {
   const entry = { id, event, payload };
   sseEventLog.push(entry);
   if (sseEventLog.length > SSE_REPLAY_CAPACITY) sseEventLog.shift();
@@ -65,6 +69,7 @@ function broadcastSSE(event: string, payload: unknown): number {
       }
     }
   }
+  return id;
 }
 
 const config = loadConfig();
@@ -533,7 +538,7 @@ es.onmessage=e=>{add("other",e.type+": "+e.data)};
     if (request.method === "GET" && url.pathname === "/version") {
       return json({
         ok: true,
-        version: "0.9.0",
+        version: "0.10.0",
         runtime: `bun ${Bun.version}`,
         arch: process.arch,
         platform: process.platform,
@@ -819,6 +824,45 @@ es.onmessage=e=>{add("other",e.type+": "+e.data)};
         ok: true,
         actions: [...ALLOWED_ACTIONS].sort(),
         count: ALLOWED_ACTIONS.size,
+      });
+    }
+
+    if (request.method === "GET" && url.pathname === "/web") {
+      return json({
+        ok: true,
+        webUrl: config.zellijWebUrl || null,
+        webTokenSet: config.zellijWebToken ? true : false,
+        sessionName: config.zellijSessionName || null,
+      });
+    }
+
+    if (request.method === "GET" && url.pathname === "/status") {
+      // Unified overview combining health + version + web config
+      let heapStats: Record<string, unknown> | null = null;
+      try {
+        const { heapStats: hs } = require("bun:jsc") as { heapStats: () => Record<string, unknown> };
+        heapStats = hs();
+      } catch {}
+      return json({
+        ok: true,
+        version: "0.10.0",
+        runtime: `bun ${Bun.version}`,
+        arch: process.arch,
+        platform: process.platform,
+        uptime: process.uptime(),
+        host: config.host,
+        port: config.port,
+        dryRun: config.dryRun,
+        starOfficeUrl: config.starOfficeUrl || null,
+        sseClients: sseClients.size,
+        sseEventLogSize: sseEventLog.length,
+        sessions: registry.list().length,
+        heap: heapStats,
+        web: {
+          url: config.zellijWebUrl || null,
+          tokenSet: config.zellijWebToken ? true : false,
+          sessionName: config.zellijSessionName || null,
+        },
       });
     }
 
