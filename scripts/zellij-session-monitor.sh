@@ -46,7 +46,7 @@ echo "[zellij-monitor] watching session: ${SESSION_NAME} interval: ${POLL_INTERV
 # Push initial state on startup
 pane_json="$(ZELLIJ_SESSION_NAME="$SESSION_NAME" zellij action list-panes --json 2>/dev/null)"
 if [[ -n "$pane_json" ]]; then
-  pane_count="$(echo "$pane_json" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(sum(1 for p in d if not p.get("is_plugin")))}')"
+  pane_count="$(echo "$pane_json" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(sum(1 for p in d if not p.get("is_plugin")))')"
   focused="$(echo "$pane_json" | python3 -c '
 import json, sys
 d = json.load(sys.stdin)
