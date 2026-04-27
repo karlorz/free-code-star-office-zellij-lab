@@ -1103,6 +1103,10 @@ setInterval(()=>{fetch("/status").then(r=>r.json()).then(d=>{
       });
     }
 
+    if (request.method === "GET" && url.pathname === "/dashboard") {
+      return renderDashboard(config);
+    }
+
     if (request.method === "GET" && url.pathname === "/version") {
       return json({
         ok: true,
@@ -2444,6 +2448,7 @@ const ROUTE_TABLE: { method: string; path: string; description: string; auth: bo
   { method: "POST", path: "/debug/reload", description: "Hot-reload handlers without dropping connections (authenticated)", auth: true },
   { method: "GET", path: "/ws", description: "WebSocket for bidirectional control (upgrade, auth optional — unauth=read-only)", auth: false },
   { method: "GET", path: "/help", description: "This route table", auth: false },
+  { method: "GET", path: "/dashboard", description: "Star Office Bridge Dashboard (HTML)", auth: false },
 ];
 
 console.log(

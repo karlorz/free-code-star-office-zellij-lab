@@ -1,48 +1,57 @@
-# Star Office Bridge Caddy Configuration
-# Reverse proxy with active + passive health checks, SSE/WebSocket support
-# Install: symlink to /etc/caddy/Caddyfile or include from main Caddyfile
+status.karldigi.dev {
+	reverse_proxy 127.0.0.1:3001
+}
 
-{
-	# Global server timeouts — raised for long-lived SSE/WS connections
-	servers {
-		timeouts {
-			read_body 10s
-			read_header 10s
-			write 30s
-			idle 5m
+term.karldigi.dev {
+	reverse_proxy 127.0.0.1:8082
+}
+
+bot.karldigi.dev {
+	handle /v1/* {
+		reverse_proxy 127.0.0.1:8642
+	}
+	handle /health {
+		reverse_proxy 127.0.0.1:8642
+	}
+	handle {
+		basic_auth * {
+			karl $2a$14$x39R5P4qOJgvZ51OX9OCI.OKKoaZkiyEceTsFJjsuDpyZfYiJJ/TK
 		}
+		reverse_proxy 127.0.0.1:9119
 	}
 }
 
-# SSE + API endpoints
-:4431 {
-	encode gzip
-
-	# Exclude SSE from gzip — compression delays event delivery
+bridge.karldigi.dev {
+	# SSE streams: no encoding (avoid buffering delay)
 	@sse path /events /events/*
-	encode @sse off
+	handle @sse {
+		reverse_proxy 127.0.0.1:4317 {
+			flush_interval -1
+			stream_timeout 24h
+			stream_close_delay 5m
+			transport http {
+				keepalive 30s
+			}
+		}
+	}
 
-	reverse_proxy 127.0.0.1:4317 {
-		# Active health check via /readyz
-		health_uri      /readyz
-		health_interval 10s
-		health_timeout  5s
-		health_status   200
-
-		# Passive health checks: observe real traffic for degradation
-		fail_duration    30s
-		max_fails        3
-		unhealthy_status 5xx
-
-		# SSE: flush immediately (no buffering), long stream lifetime
-		# WebSocket upgrade is automatic in Caddy v2
-		flush_interval   -1
-		stream_timeout   24h
-		stream_close_delay 5m
-
-		# Transport: keep-alive must be <= bridge's idle timeout
-		transport http {
-			keepalive 30s
+	# Everything else: gzip + standard proxy
+	handle {
+		encode gzip
+		reverse_proxy 127.0.0.1:4317 {
+			health_uri /readyz
+			health_interval 10s
+			health_timeout 5s
+			health_status 200
+			fail_duration 30s
+			max_fails 3
+			unhealthy_status 5xx
+			flush_interval -1
+			stream_timeout 24h
+			stream_close_delay 5m
+			transport http {
+				keepalive 30s
+			}
 		}
 	}
 
