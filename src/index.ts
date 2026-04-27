@@ -1447,6 +1447,8 @@ async function handleRequest(request: Request, url: URL): Promise<Response> {
         zellijSaveSuccesses: metrics.zellijSaveSuccesses,
         zellijSaveFailures: metrics.zellijSaveFailures,
         zellijLastSaveAt: zellijLastSaveAt || null,
+        ipcActions: Object.fromEntries(metrics.ipcActions),
+        cliActions: Object.fromEntries(metrics.cliActions),
         isShuttingDown,
       });
     }
@@ -2421,7 +2423,7 @@ setInterval(()=>{fetch("/status").then(r=>r.json()).then(d=>{
           }, { status: 502 });
         }
 
-        // Parse token from output like "token_5: b5b1136b-c71d-48c3-9e91-e82e43117cc7"
+        // Parse token from output like "token_<N>: <UUID>"
         const tokenMatch = stdout.match(/(token_\d+)\s*:\s*([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i);
         const newToken = tokenMatch ? tokenMatch[2] : null;
         const newTokenName = tokenMatch ? tokenMatch[1] : null;
