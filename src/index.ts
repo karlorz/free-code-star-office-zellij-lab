@@ -1,6 +1,21 @@
-import { mkdir, readFile, stat, unlink } from "node:fs/promises";
+import { readFile, stat, unlink } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { loadConfig, timingSafeCompare } from "./config";
+import { CORS_HEADERS, isAuthorized, checkRateLimit } from "./auth";
+import {
+  SSE_REPLAY_CAPACITY,
+  sseEventSeq, sseClientSeq, sseClients, sseEventLog,
+  incrementSseEventSeq, incrementSseClientSeq,
+  formatSSE, broadcastSSE, broadcastSSEWithId,
+} from "./sse";
+import { metrics, observeHistogram, buildPrometheusMetrics, SSE_DURATION_BUCKETS } from "./metrics";
+import {
+  EVENTS_LOG_MAX_BYTES, EVENTS_LOG_KEEP_ROTATED,
+  getLogSink, flushLogSink, closeLogSink,
+  appendEvent, appendIgnoredEvent,
+} from "./eventLog";
+import { zellijEnv, mapZellijEvent } from "./zellijEvents";
+import { renderDashboard } from "./dashboard";
 import { SessionRegistry } from "./sessionRegistry";
 import { StarOfficeClient } from "./starOfficeClient";
 import { normalizeClaudeEvent } from "./stateMapper";
@@ -11,568 +26,16 @@ import type {
   ClaudeBridgeEvent,
   NormalizedSignal,
 } from "./types";
-
-const SSE_REPLAY_CAPACITY = 64;
-const SSE_MAX_BUFFERED_MESSAGES = 32; // Drop clients with more than this many buffered messages
-let sseEventSeq = 0;
-let sseClientSeq = 0;
-const sseClients = new Map<number, { controller: ReadableStreamDefaultController; buffered: number; connectedAt: number }>();
 const BRIDGE_VERSION = "0.66.0";
+const encoder = new TextEncoder();
 
-// Shared environment for zellij CLI subprocess calls
-function zellijEnv(session?: string): Record<string, string | undefined> {
-  return {
-    ...process.env,
-    ZELLIJ_SESSION_NAME: session || config.zellijSessionName || "",
-    HOME: process.env.HOME || "/root",
-    XDG_RUNTIME_DIR: process.env.XDG_RUNTIME_DIR || "/run/user/0",
-    PATH: process.env.PATH || "/usr/local/bin:/usr/bin:/bin",
-  };
-}
-
-const CORS_HEADERS = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Last-Event-ID, X-Bridge-Secret",
-};
-const sseEventLog: { id: number; event: string; payload: unknown }[] = [];
 const lastSignalByKey = new Map<string, string>();
 const dedupCounts = new Map<string, { seen: number; passed: number; lastSeenAt: number }>();
 const DEDUP_TTL_MS = 30 * 60 * 1000; // 30 minutes — evict stale dedup entries
 const ALERT_DEDUP_TTL_MS = 60 * 1000; // 1 minute — alert webhook dedup window
 const alertDedup = new Map<string, number>(); // groupKey:status -> timestamp
-const encoder = new TextEncoder();
 
-// Prometheus metrics counters
-const metrics = {
-  httpRequestsTotal: new Map<string, number>(),  // path -> count
-  httpResponsesTotal: new Map<string, number>(),  // "path:status" -> count
-  httpRequestDurationMs: new Map<string, { count: number; sum: number; buckets: Map<string, number> }>(),  // path -> histogram
-  sseBroadcasts: 0,
-  sseClientConnected: 0,
-  sseClientDisconnected: 0,
-  sseClientEvicted: 0,
-  sseClientDurationMs: new Map<string, number>(),  // bucket -> count (histogram)
-  sseClientDurationSum: 0,
-  sseClientDurationCount: 0,
-  sseReplayRequests: 0,     // Last-Event-ID reconnects
-  sseReplaySuccesses: 0,    // Successful replays from ring buffer
-  sseReplayGaps: 0,         // Stale Last-Event-ID → gap notification
-  signalsProcessed: 0,
-  signalsDuplicate: 0,
-  signalsSuppressed: 0,     // Cumulative duplicates prevented from broadcast
-  actionsExecuted: 0,
-  ipcActions: new Map<string, number>(),   // action -> count (IPC path)
-  cliActions: new Map<string, number>(),   // action -> count (CLI fallback path)
-  tokenRefreshes: 0,
-  tokenRevocations: 0,
-  starOfficeApply: 0,
-  starOfficeApplyFailures: 0,
-  alertsReceived: 0,
-  rateLimitRejections: 0,
-  wsConnections: 0,
-  wsDisconnects: 0,
-  wsMessages: 0,
-  wsClientsCurrent: 0,
-  dedupEvicted: 0,
-  gcTriggers: 0,
-  zellijSessionHealthy: 1,  // gauge: 1=healthy, 0=unhealthy
-  zellijHealthConsecutiveFailures: 0,
-  zellijRecoveryAttempts: 0,
-  zellijRecoverySuccesses: 0,
-  wsClientTimeouts: 0,      // zombie connections cleaned up by heartbeat
-  wsBackpressureDrops: 0,   // slow clients dropped by backpressureLimit
-  zellijSaveSuccesses: 0,  // periodic save-session IPC successes
-  zellijSaveFailures: 0,   // periodic save-session IPC failures
-  startTime: Date.now(),
-};
-
-// Histogram buckets for SSE client connection duration (seconds)
-const SSE_DURATION_BUCKETS = [1, 5, 10, 30, 60, 120, 300, 600, 1800, 3600, 7200, 14440];
-
-// Histogram buckets for HTTP request latency (ms)
-const LATENCY_BUCKETS = [0.1, 0.5, 1, 5, 10, 50, 100, 500, 1000];
-
-function observeHistogram(path: string, durationMs: number): void {
-  let entry = metrics.httpRequestDurationMs.get(path);
-  if (!entry) {
-    entry = { count: 0, sum: 0, buckets: new Map(LATENCY_BUCKETS.map(b => [`le="${b}"`, 0])) };
-    entry.buckets.set('le="+Inf"', 0);
-    metrics.httpRequestDurationMs.set(path, entry);
-  }
-  entry.count++;
-  entry.sum += durationMs;
-  for (const b of LATENCY_BUCKETS) {
-    if (durationMs <= b) {
-      entry.buckets.set(`le="${b}"`, (entry.buckets.get(`le="${b}"`) || 0) + 1);
-    }
-  }
-  entry.buckets.set('le="+Inf"', (entry.buckets.get('le="+Inf"') || 0) + 1);
-}
-
-function formatSSE(data: unknown, event?: string, id?: number): Uint8Array {
-  const parts: string[] = [];
-  if (id !== undefined) parts.push(`id: ${id}`);
-  if (event) parts.push(`event: ${event}`);
-  parts.push(`retry: 3000`);
-  parts.push(`data: ${JSON.stringify(data)}`);
-  parts.push("", "");
-  return encoder.encode(parts.join("\n"));
-}
-
-function broadcastSSE(event: string, payload: unknown): number {
-  const id = ++sseEventSeq;
-  metrics.sseBroadcasts++;
-  return broadcastSSEWithId(id, event, payload);
-}
-
-function broadcastSSEWithId(id: number, event: string, payload: unknown): number {
-  const entry = { id, event, payload };
-  sseEventLog.push(entry);
-  if (sseEventLog.length > SSE_REPLAY_CAPACITY) sseEventLog.shift();
-  const message = formatSSE(payload, event, id);
-  for (const [cid, client] of sseClients) {
-    try {
-      client.controller.enqueue(message);
-      // Bun/Web Streams: enqueue() does NOT throw on backpressure (spec limitation).
-      // Check desiredSize to detect slow consumers — negative means queue is full.
-      const ds = client.controller.desiredSize;
-      if (ds !== null && ds <= 0) {
-        client.buffered++;
-      }
-      if (client.buffered > SSE_MAX_BUFFERED_MESSAGES) {
-        console.warn(`[bridge] dropping slow SSE client ${cid} (${client.buffered} buffered, desiredSize=${ds})`);
-        metrics.sseClientEvicted++;
-        try {
-          client.controller.enqueue(formatSSE({ reason: "backpressure", bufferedMessages: client.buffered }, "backpressure"));
-          client.controller.close();
-        } catch {}
-        sseClients.delete(cid);
-      }
-    } catch {
-      // enqueue threw — stream is broken (client disconnected mid-write)
-      metrics.sseClientEvicted++;
-      sseClients.delete(cid);
-    }
-  }
-  // Also publish to WebSocket subscribers
-  try {
-    server.publish("bridge-events", JSON.stringify({ type: event, id, data: payload }));
-  } catch {}
-  return id;
-}
-
-const config = loadConfig();
-const registry = new SessionRegistry();
-const starOfficeClient = new StarOfficeClient(config);
-
-function json(data: unknown, init?: ResponseInit): Response {
-  return new Response(JSON.stringify(data, null, 2), {
-    ...init,
-    headers: {
-      "content-type": "application/json; charset=utf-8",
-      ...CORS_HEADERS,
-      ...(init?.headers || {}),
-    },
-  });
-}
-
-function formatError(error: unknown): BridgeErrorInfo {
-  if (error instanceof Error) {
-    return {
-      message: error.message,
-      stack: error.stack,
-    };
-  }
-  return {
-    message: String(error),
-  };
-}
-
-const EVENTS_LOG_MAX_BYTES = 10 * 1024 * 1024; // 10MB max for events.ndjson
-const EVENTS_LOG_KEEP_ROTATED = 2; // Keep N rotated files for longer catch-up windows
-
-// Bun FileSink for high-performance log writes — eliminates per-write open/close syscalls
-let _logSink: ReturnType<typeof Bun.file> extends { writer(...args: any[]): infer W } ? W : never;
-let _logSinkPath = "";
-
-function getLogSink() {
-  // Re-create sink if path changed (after rotation renames the file away)
-  if (!_logSink || _logSinkPath !== config.eventsLogPath) {
-    _logSinkPath = config.eventsLogPath;
-    _logSink = Bun.file(config.eventsLogPath).writer();
-  }
-  return _logSink;
-}
-
-async function flushLogSink() {
-  try { _logSink?.flush(); } catch { /* sink may be closed after rotation */ }
-}
-
-async function closeLogSink() {
-  try { _logSink?.end(); } catch { /* already closed */ }
-  _logSink = undefined as any;
-  _logSinkPath = "";
-}
-
-async function appendEvent(entry: BridgeEventLogEntry): Promise<void> {
-  try {
-    await mkdir(dirname(config.eventsLogPath), { recursive: true });
-    // Rotate log if it exceeds max size — rename-based, not destructive
-    try {
-      const fileStat = await stat(config.eventsLogPath);
-      if (fileStat.size > EVENTS_LOG_MAX_BYTES) {
-        console.log(`[bridge] rotating events log (${(fileStat.size / 1024 / 1024).toFixed(1)}MB exceeds ${EVENTS_LOG_MAX_BYTES / 1024 / 1024}MB limit)`);
-        // Flush and close sink before rotation (file must be closed for rename)
-        await closeLogSink();
-        const { rename: renameFile } = await import("node:fs/promises");
-        // Remove oldest rotated file (also remove compressed .zst version)
-        for (let i = EVENTS_LOG_KEEP_ROTATED; i >= 1; i--) {
-          const rotatedPath = `${config.eventsLogPath}.${i}`;
-          const rotatedZstPath = `${rotatedPath}.zst`;
-          const nextRotatedPath = `${config.eventsLogPath}.${i + 1}`;
-          const nextRotatedZstPath = `${nextRotatedPath}.zst`;
-          try {
-            // Prefer compressed version if it exists
-            const hasZst = await stat(rotatedZstPath).then(() => true).catch(() => false);
-            const hasPlain = await stat(rotatedPath).then(() => true).catch(() => false);
-            if (i === EVENTS_LOG_KEEP_ROTATED) {
-              if (hasZst) await unlink(rotatedZstPath);
-              if (hasPlain) await unlink(rotatedPath);
-            } else {
-              if (hasZst) await renameFile(rotatedZstPath, nextRotatedZstPath);
-              if (hasPlain) await renameFile(rotatedPath, nextRotatedPath);
-            }
-          } catch { /* file doesn't exist */ }
-        }
-        // Move current log to .1
-        await renameFile(config.eventsLogPath, `${config.eventsLogPath}.1`);
-        // Compress the new .1 file in the background — reduces storage ~90%
-        // onExit handler prevents zombie process when zstd finishes
-        const zstSrc = `${config.eventsLogPath}.1`;
-        const zstProc = Bun.spawn({ cmd: ["zstd", "-3", "--rm", zstSrc], stderr: "ignore", onExit(proc, exitCode) {
-          if (exitCode !== 0) console.warn(`[bridge] zstd compression failed for ${zstSrc}: exit=${exitCode}`);
-          // Remove from tracked procs when done
-          const idx = backgroundProcs.indexOf(zstProc);
-          if (idx >= 0) backgroundProcs.splice(idx, 1);
-        } });
-        backgroundProcs.push(zstProc);
-      }
-    } catch {
-      // File doesn't exist yet — no rotation needed
-    }
-    const sink = getLogSink();
-    sink.write(`${JSON.stringify(entry)}\n`);
-  } catch (error) {
-    console.warn("[bridge] failed to append event", formatError(error));
-  }
-}
-
-async function appendIgnoredEvent(
-  source: string,
-  ignoreReason: string,
-  options: {
-    rawEvent?: unknown;
-    rawBody?: string;
-  } = {},
-): Promise<void> {
-  // Don't write ignored events to NDJSON log — they have no signal data
-  // and would just waste I/O until compaction removes them.
-  // Increment counter for observability instead.
-  metrics.signalsSuppressed++;
-}
-
-function mapZellijEvent(body: Record<string, unknown>): NormalizedSignal {
-  const zellijEvent = typeof body.zellij_event === "string" ? body.zellij_event : "unknown";
-  const sessionId = typeof body.session_id === "string" ? body.session_id : "zellij-monitor";
-  const cwd = typeof body.cwd === "string" ? body.cwd : "/";
-
-  let state: NormalizedSignal["state"];
-  let detail: string;
-  switch (zellijEvent) {
-    case "pane_update":
-      state = "syncing";
-      detail = `pane_update: ${body.total_panes ?? "?"} panes`;
-      break;
-    case "tab_update":
-      state = "syncing";
-      detail = `tab_update: ${body.tab_count ?? "?"} tabs, active=${typeof body.active_tab === "string" ? body.active_tab : "?"}`;
-      break;
-    case "cwd_change":
-      state = "executing";
-      detail = `cwd_change: ${cwd}`;
-      break;
-    case "command_change":
-      state = "executing";
-      detail = `command_change: ${typeof body.terminal_command === "string" ? body.terminal_command : "?"}`;
-      break;
-    case "pane_content":
-      state = "executing";
-      detail = `pane_content: pane=${body.pane_id ?? "?"} lines=${body.viewport_lines ?? "?"}`;
-      break;
-    case "pane_exit":
-      state = "idle";
-      detail = `pane_exit: exit=${body.exit_status ?? "?"} held=${body.is_held ?? "?"}`;
-      break;
-    case "client_update":
-      state = "syncing";
-      detail = `client_update: ${body.client_count ?? "?"} clients`;
-      break;
-    case "web_status":
-      state = "syncing";
-      detail = `web_status: ${typeof body.web_status === "string" ? body.web_status : "?"}`;
-      break;
-    default:
-      state = "syncing";
-      detail = zellijEvent;
-  }
-
-  return {
-    sessionId,
-    agentName: "main",
-    scope: "main",
-    state,
-    detail,
-    eventName: typeof body.hook_event_name === "string" ? body.hook_event_name : "ZellijEvent",
-    shouldLeave: false,
-    context: {
-      cwd,
-      zellijEvent,
-      zellijPaneCount: body.total_panes != null ? Number(body.total_panes) : undefined,
-      zellijTabCount: body.tab_count != null ? Number(body.tab_count) : undefined,
-      zellijFocusedTitles: Array.isArray(body.focused_titles) ? body.focused_titles.map(String) : undefined,
-      zellijActiveTab: typeof body.active_tab === "string" ? body.active_tab : undefined,
-      zellijTerminalCommand: typeof body.terminal_command === "string" ? body.terminal_command : undefined,
-      zellijExitStatus: body.exit_status != null ? Number(body.exit_status) : (body.exit_status === null ? null : undefined),
-      zellijIsHeld: typeof body.is_held === "boolean" ? body.is_held : undefined,
-      zellijIsFloating: typeof body.is_floating === "boolean" ? body.is_floating : undefined,
-      zellijClientCount: body.client_count != null ? Number(body.client_count) : undefined,
-      zellijTabNames: Array.isArray(body.tabs) ? body.tabs.map(String) : undefined,
-      zellijPaneId: typeof body.pane_id === "string" ? body.pane_id : undefined,
-      zellijViewportLines: body.viewport_lines != null ? Number(body.viewport_lines) : undefined,
-      zellijViewportHash: typeof body.viewport_hash === "string" ? body.viewport_hash : undefined,
-      zellijLastLine: typeof body.last_line === "string" ? body.last_line : undefined,
-      zellijWebStatus: typeof body.web_status === "string" ? body.web_status : undefined,
-    },
-  };
-}
-
-function buildPrometheusMetrics(): string {
-  const lines: string[] = [];
-  const uptime = process.uptime();
-  // Process info
-  lines.push(`# HELP bridge_uptime_seconds Process uptime in seconds`);
-  lines.push(`# TYPE bridge_uptime_seconds gauge`);
-  lines.push(`bridge_uptime_seconds ${uptime.toFixed(2)}`);
-  // Build info metric — standard pattern for version identification from Prometheus queries
-  lines.push(`# HELP bridge_info Bridge build information`);
-  lines.push(`# TYPE bridge_info gauge`);
-  const versionStr = BRIDGE_VERSION;
-  lines.push(`bridge_info{version="${versionStr}",runtime="bun_${Bun.version}",arch="${process.arch}",platform="${process.platform}"} 1`);
-  // SSE metrics
-  lines.push(`# HELP bridge_sse_clients_current Current SSE client connections`);
-  lines.push(`# TYPE bridge_sse_clients_current gauge`);
-  lines.push(`bridge_sse_clients_current ${sseClients.size}`);
-  lines.push(`# HELP bridge_sse_broadcasts_total Total SSE broadcast events`);
-  lines.push(`# TYPE bridge_sse_broadcasts_total counter`);
-  lines.push(`bridge_sse_broadcasts_total ${metrics.sseBroadcasts}`);
-  lines.push(`# HELP bridge_sse_client_connected_total Total SSE client connections established`);
-  lines.push(`# TYPE bridge_sse_client_connected_total counter`);
-  lines.push(`bridge_sse_client_connected_total ${metrics.sseClientConnected}`);
-  lines.push(`# HELP bridge_sse_client_disconnected_total Total SSE client disconnections`);
-  lines.push(`# TYPE bridge_sse_client_disconnected_total counter`);
-  lines.push(`bridge_sse_client_disconnected_total ${metrics.sseClientDisconnected}`);
-  lines.push(`# HELP bridge_sse_client_evicted_total Total SSE clients evicted for slow consumption`);
-  lines.push(`# TYPE bridge_sse_client_evicted_total counter`);
-  lines.push(`bridge_sse_client_evicted_total ${metrics.sseClientEvicted}`);
-  lines.push(`# HELP bridge_sse_replay_requests_total Total SSE Last-Event-ID replay requests`);
-  lines.push(`# TYPE bridge_sse_replay_requests_total counter`);
-  lines.push(`bridge_sse_replay_requests_total ${metrics.sseReplayRequests}`);
-  lines.push(`# HELP bridge_sse_replay_successes_total Total successful SSE replays from ring buffer`);
-  lines.push(`# TYPE bridge_sse_replay_successes_total counter`);
-  lines.push(`bridge_sse_replay_successes_total ${metrics.sseReplaySuccesses}`);
-  lines.push(`# HELP bridge_sse_replay_gaps_total Total SSE replay gaps (stale Last-Event-ID)`);
-  lines.push(`# TYPE bridge_sse_replay_gaps_total counter`);
-  lines.push(`bridge_sse_replay_gaps_total ${metrics.sseReplayGaps}`);
-  lines.push(`# HELP bridge_sse_event_log_size Current event log ring buffer size`);
-  lines.push(`# TYPE bridge_sse_event_log_size gauge`);
-  lines.push(`bridge_sse_event_log_size ${sseEventLog.length}`);
-  // Signal metrics
-  lines.push(`# HELP bridge_signals_processed_total Total signals processed (non-duplicate)`);
-  lines.push(`# TYPE bridge_signals_processed_total counter`);
-  lines.push(`bridge_signals_processed_total ${metrics.signalsProcessed}`);
-  lines.push(`# HELP bridge_signals_duplicate_total Total duplicate signals suppressed`);
-  lines.push(`# TYPE bridge_signals_duplicate_total counter`);
-  lines.push(`bridge_signals_duplicate_total ${metrics.signalsDuplicate}`);
-  lines.push(`# HELP bridge_signals_suppressed_total Cumulative duplicate signals suppressed (running total)`);
-  lines.push(`# TYPE bridge_signals_suppressed_total counter`);
-  lines.push(`bridge_signals_suppressed_total ${metrics.signalsSuppressed}`);
-  lines.push(`# HELP bridge_sessions_current Current active sessions`);
-  lines.push(`# TYPE bridge_sessions_current gauge`);
-  lines.push(`bridge_sessions_current ${registry.list().length}`);
-  // Action metrics
-  lines.push(`# HELP bridge_actions_executed_total Total Zellij actions executed`);
-  lines.push(`# TYPE bridge_actions_executed_total counter`);
-  lines.push(`bridge_actions_executed_total ${metrics.actionsExecuted}`);
-  // IPC vs CLI action metrics
-  lines.push(`# HELP bridge_ipc_actions_total Actions executed via direct UDS IPC, by action name`);
-  lines.push(`# TYPE bridge_ipc_actions_total counter`);
-  for (const [action, count] of metrics.ipcActions) {
-    lines.push(`bridge_ipc_actions_total{action="${action}",via="ipc"} ${count}`);
-  }
-  lines.push(`# HELP bridge_cli_actions_total Actions executed via CLI spawn fallback, by action name`);
-  lines.push(`# TYPE bridge_cli_actions_total counter`);
-  for (const [action, count] of metrics.cliActions) {
-    lines.push(`bridge_cli_actions_total{action="${action}",via="cli"} ${count}`);
-  }
-  // Token metrics
-  lines.push(`# HELP bridge_token_refreshes_total Total Zellij web token refreshes`);
-  lines.push(`# TYPE bridge_token_refreshes_total counter`);
-  lines.push(`bridge_token_refreshes_total ${metrics.tokenRefreshes}`);
-  lines.push(`# HELP bridge_token_revocations_total Total Zellij web token revocations`);
-  lines.push(`# TYPE bridge_token_revocations_total counter`);
-  lines.push(`bridge_token_revocations_total ${metrics.tokenRevocations}`);
-  // Rate limit metrics
-  lines.push(`# HELP bridge_rate_limit_rejections_total Total requests rejected by rate limiter`);
-  lines.push(`# TYPE bridge_rate_limit_rejections_total counter`);
-  lines.push(`bridge_rate_limit_rejections_total ${metrics.rateLimitRejections}`);
-  // Star Office apply metrics
-  lines.push(`# HELP bridge_star_office_apply_total Total star-office apply successes`);
-  lines.push(`# TYPE bridge_star_office_apply_total counter`);
-  lines.push(`bridge_star_office_apply_total ${metrics.starOfficeApply}`);
-  lines.push(`# HELP bridge_star_office_apply_failures_total Total star-office apply failures`);
-  lines.push(`# TYPE bridge_star_office_apply_failures_total counter`);
-  lines.push(`bridge_star_office_apply_failures_total ${metrics.starOfficeApplyFailures}`);
-  // Alert webhook metrics
-  lines.push(`# HELP bridge_alerts_received_total Total alerts received from Alertmanager webhook`);
-  lines.push(`# TYPE bridge_alerts_received_total counter`);
-  lines.push(`bridge_alerts_received_total ${metrics.alertsReceived}`);
-  // SSE connection duration histogram
-  lines.push(`# HELP bridge_sse_client_duration_seconds SSE client connection duration in seconds`);
-  lines.push(`# TYPE bridge_sse_client_duration_seconds histogram`);
-  if (metrics.sseClientDurationCount > 0) {
-    let cumSum = 0;
-    for (const b of SSE_DURATION_BUCKETS) {
-      cumSum += metrics.sseClientDurationMs.get(`le="${b}"`) || 0;
-      lines.push(`bridge_sse_client_duration_seconds_bucket{le="${b}"} ${cumSum}`);
-    }
-    const infCount = metrics.sseClientDurationMs.get('le="+Inf"') || 0;
-    lines.push(`bridge_sse_client_duration_seconds_bucket{le="+Inf"} ${cumSum + infCount}`);
-    lines.push(`bridge_sse_client_duration_seconds_sum ${metrics.sseClientDurationSum.toFixed(2)}`);
-    lines.push(`bridge_sse_client_duration_seconds_count ${metrics.sseClientDurationCount}`);
-  }
-  // WebSocket metrics
-  lines.push(`# HELP bridge_ws_connections_total Total WebSocket connections established`);
-  lines.push(`# TYPE bridge_ws_connections_total counter`);
-  lines.push(`bridge_ws_connections_total ${metrics.wsConnections}`);
-  lines.push(`# HELP bridge_ws_disconnects_total Total WebSocket disconnections`);
-  lines.push(`# TYPE bridge_ws_disconnects_total counter`);
-  lines.push(`bridge_ws_disconnects_total ${metrics.wsDisconnects}`);
-  lines.push(`# HELP bridge_ws_messages_total Total WebSocket messages received`);
-  lines.push(`# TYPE bridge_ws_messages_total counter`);
-  lines.push(`bridge_ws_messages_total ${metrics.wsMessages}`);
-  lines.push(`# HELP bridge_ws_clients_current Current WebSocket client connections`);
-  lines.push(`# TYPE bridge_ws_clients_current gauge`);
-  lines.push(`bridge_ws_clients_current ${metrics.wsClientsCurrent}`);
-  // HTTP request metrics by path
-  lines.push(`# HELP bridge_http_requests_total Total HTTP requests by path`);
-  lines.push(`# TYPE bridge_http_requests_total counter`);
-  for (const [path, count] of metrics.httpRequestsTotal) {
-    lines.push(`bridge_http_requests_total{path="${path}"} ${count}`);
-  }
-  // HTTP response metrics by path and status
-  lines.push(`# HELP bridge_http_responses_total Total HTTP responses by path and status`);
-  lines.push(`# TYPE bridge_http_responses_total counter`);
-  for (const [key, count] of metrics.httpResponsesTotal) {
-    const [path, status] = key.split(":");
-    lines.push(`bridge_http_responses_total{path="${path}",status="${status}"} ${count}`);
-  }
-  // Memory from Bun
-  const mem = process.memoryUsage();
-  lines.push(`# HELP bridge_process_memory_rss_bytes Process RSS memory in bytes`);
-  lines.push(`# TYPE bridge_process_memory_rss_bytes gauge`);
-  lines.push(`bridge_process_memory_rss_bytes ${mem.rss}`);
-  lines.push(`# HELP bridge_process_memory_heap_bytes Process heap memory in bytes`);
-  lines.push(`# TYPE bridge_process_memory_heap_bytes gauge`);
-  lines.push(`bridge_process_memory_heap_bytes ${mem.heapUsed}`);
-  // Server pending metrics (zero-overhead Bun.serve counters)
-  lines.push(`# HELP bridge_pending_requests Number of in-flight HTTP requests`);
-  lines.push(`# TYPE bridge_pending_requests gauge`);
-  lines.push(`bridge_pending_requests ${server.pendingRequests}`);
-  lines.push(`# HELP bridge_pending_websockets Number of active WebSocket connections`);
-  lines.push(`# TYPE bridge_pending_websockets gauge`);
-  lines.push(`bridge_pending_websockets ${server.pendingWebSockets}`);
-  // Dedup map metrics
-  lines.push(`# HELP bridge_dedup_entries Current number of dedup keys tracked`);
-  lines.push(`# TYPE bridge_dedup_entries gauge`);
-  lines.push(`bridge_dedup_entries ${dedupCounts.size}`);
-  lines.push(`# HELP bridge_dedup_evicted_total Total dedup entries evicted by TTL`);
-  lines.push(`# TYPE bridge_dedup_evicted_total counter`);
-  lines.push(`bridge_dedup_evicted_total ${metrics.dedupEvicted}`);
-  lines.push(`# HELP bridge_gc_triggers_total Number of manual GC triggers via /debug/gc`);
-  lines.push(`# TYPE bridge_gc_triggers_total counter`);
-  lines.push(`bridge_gc_triggers_total ${metrics.gcTriggers}`);
-  // Zellij session health gauge
-  lines.push(`# HELP bridge_zellij_session_healthy Whether the zellij session server is responsive via IPC (1=healthy, 0=unhealthy)`);
-  lines.push(`# TYPE bridge_zellij_session_healthy gauge`);
-  lines.push(`bridge_zellij_session_healthy ${metrics.zellijSessionHealthy}`);
-  lines.push(`# HELP bridge_zellij_recovery_attempts_total Total zellij session auto-recovery attempts`);
-  lines.push(`# TYPE bridge_zellij_recovery_attempts_total counter`);
-  lines.push(`bridge_zellij_recovery_attempts_total ${metrics.zellijRecoveryAttempts}`);
-  lines.push(`# HELP bridge_zellij_recovery_successes_total Total successful zellij session recoveries`);
-  lines.push(`# TYPE bridge_zellij_recovery_successes_total counter`);
-  lines.push(`bridge_zellij_recovery_successes_total ${metrics.zellijRecoverySuccesses}`);
-  lines.push(`# HELP bridge_zellij_save_successes_total Periodic save-session IPC successes`);
-  lines.push(`# TYPE bridge_zellij_save_successes_total counter`);
-  lines.push(`bridge_zellij_save_successes_total ${metrics.zellijSaveSuccesses}`);
-  lines.push(`# HELP bridge_zellij_save_failures_total Periodic save-session IPC failures`);
-  lines.push(`# TYPE bridge_zellij_save_failures_total counter`);
-  lines.push(`bridge_zellij_save_failures_total ${metrics.zellijSaveFailures}`);
-  lines.push(`# HELP bridge_ws_client_timeouts_total WebSocket connections closed by heartbeat zombie detection`);
-  lines.push(`# TYPE bridge_ws_client_timeouts_total counter`);
-  lines.push(`bridge_ws_client_timeouts_total ${metrics.wsClientTimeouts}`);
-  lines.push(`# HELP bridge_ws_backpressure_drops_total WebSocket connections dropped for exceeding backpressure limit`);
-  lines.push(`# TYPE bridge_ws_backpressure_drops_total counter`);
-  lines.push(`bridge_ws_backpressure_drops_total ${metrics.wsBackpressureDrops}`);
-  // Heap object count from cached heapStats (JSC engine)
-  const heapObjCount = cachedHeapStats?.objectCount as number | undefined;
-  if (heapObjCount !== undefined) {
-    lines.push(`# HELP bridge_heap_object_count JSC heap object count (sampled every 60s)`);
-    lines.push(`# TYPE bridge_heap_object_count gauge`);
-    lines.push(`bridge_heap_object_count ${heapObjCount}`);
-  }
-  // HTTP request duration histograms
-  lines.push(`# HELP bridge_http_request_duration_milliseconds HTTP request latency in milliseconds`);
-  lines.push(`# TYPE bridge_http_request_duration_milliseconds histogram`);
-  for (const [path, entry] of metrics.httpRequestDurationMs) {
-    let cumSum = 0;
-    for (const b of LATENCY_BUCKETS) {
-      cumSum += entry.buckets.get(`le="${b}"`) || 0;
-      lines.push(`bridge_http_request_duration_milliseconds_bucket{path="${path}",le="${b}"} ${cumSum}`);
-    }
-    cumSum += entry.buckets.get('le="+Inf"') || 0;
-    lines.push(`bridge_http_request_duration_milliseconds_bucket{path="${path}",le="+Inf"} ${cumSum}`);
-    lines.push(`bridge_http_request_duration_milliseconds_sum{path="${path}"} ${entry.sum.toFixed(2)}`);
-    lines.push(`bridge_http_request_duration_milliseconds_count{path="${path}"} ${entry.count}`);
-  }
-  return lines.join("\n") + "\n";
-}
-
-function isAuthorized(request: Request): boolean {
-  if (!config.secret) {
-    return true;
-  }
-  const provided = request.headers.get("x-bridge-secret");
-  if (provided) {
-    return timingSafeCompare(provided, config.secret);
-  }
-  return false;
-}
-
-// Simple rate limiter: per-IP sliding window
-const rateLimits = new Map<string, { count: number; windowStart: number }>();
-const RATE_LIMIT_WINDOW = 60_000; // 1 minute
-const RATE_LIMIT_MAX = 120; // requests per window
+const RATE_LIMIT_WINDOW = 60_000; // 1 minute — exported from auth.ts but also needed here for error messages
 
 const ALLOWED_ACTIONS = new Set([
   "new-tab", "close-tab", "close-tab-by-id", "go-to-tab", "go-to-tab-by-id", "go-to-tab-name",
@@ -592,7 +55,6 @@ const ALLOWED_ACTIONS = new Set([
 ]);
 
 // Actions eligible for direct UDS+protobuf IPC (3.6x faster than CLI spawn)
-// Note: dump-screen excluded — screen content not returned via IPC channel
 const IPC_ELIGIBLE = new Set([
   "list-tabs", "list-panes", "list-clients", "current-tab-info",
   "go-to-next-tab", "go-to-previous-tab", "close-tab", "new-tab", "rename-tab",
@@ -601,21 +63,27 @@ const IPC_ELIGIBLE = new Set([
   "detach", "no-op", "scroll-up", "scroll-down", "scroll-to-bottom", "scroll-to-top",
   "clear-screen", "dump-layout", "save-session", "rename-session",
   "resize", "write", "write-chars", "move-pane",
-]);
+])
+const config = loadConfig();
+const registry = new SessionRegistry();
+const starOfficeClient = new StarOfficeClient(config);
 
-function checkRateLimit(request: Request): string | null {
-  const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "local";
-  const now = Date.now();
-  const entry = rateLimits.get(ip);
-  if (!entry || now - entry.windowStart > RATE_LIMIT_WINDOW) {
-    rateLimits.set(ip, { count: 1, windowStart: now });
-    return null;
+function json(data: unknown, init?: ResponseInit): Response {
+  return new Response(JSON.stringify(data, null, 2), {
+    ...init,
+    headers: {
+      "content-type": "application/json; charset=utf-8",
+      ...CORS_HEADERS,
+      ...(init?.headers || {}),
+    },
+  });
+}
+
+function formatError(error: unknown): BridgeErrorInfo {
+  if (error instanceof Error) {
+    return { message: error.message, stack: error.stack };
   }
-  entry.count++;
-  if (entry.count > RATE_LIMIT_MAX) {
-    return ip;
-  }
-  return null;
+  return { message: String(error) };
 }
 
 async function processSignal(
@@ -665,7 +133,7 @@ async function processSignal(
   // Process signal asynchronously after fast-ack response.
   // This prevents hook timeouts (10s) when starOfficeClient.apply() is slow.
   // The hook response is ignored by Claude Code for decision purposes anyway.
-  const signalId = ++sseEventSeq;
+  const signalId = incrementSseEventSeq();
   broadcastSSEWithId(signalId, "signal", resolvedSignal);
 
   // Fire-and-forget: append to log + apply to star office
@@ -680,7 +148,7 @@ async function processSignal(
     starOfficeError: null,
     ignored: false,
     ignoreReason: null,
-  }).then(async () => {
+  }, config, backgroundProcs).then(async () => {
     try {
       const result = await starOfficeClient.apply(resolvedSignal);
       // Update the event log entry with the star office result
@@ -808,7 +276,7 @@ const compactionInterval = setInterval(async () => {
 const snapshotPushInterval = setInterval(() => {
   if (sseClients.size > 0) {
     const snapshot = registry.list();
-    broadcastSSE("snapshot_sync", { sessions: snapshot, ts: Date.now() });
+    broadcastSSE("snapshot_sync", { sessions: snapshot, ts: Date.now() }, metrics);
   }
 }, 60_000);
 
@@ -832,7 +300,7 @@ async function attemptZellijRecovery(session: string): Promise<boolean> {
   try {
     const proc = Bun.spawn({
       cmd: ["zellij", "attach", "-c", "--force-run-commands", session],
-      env: zellijEnv(session),
+      env: zellijEnv(session, config),
       stdout: "ignore",
       stderr: "pipe",
     });
@@ -1066,7 +534,7 @@ const server = Bun.serve({
       // via query parameter as fallback: /ws?secret=xxx
       const headerSecret = request.headers.get("x-bridge-secret");
       const querySecret = url.searchParams.get("secret");
-      const authed = isAuthorized(request) || (config.secret && querySecret && timingSafeCompare(querySecret, config.secret));
+      const authed = isAuthorized(request, config) || (config.secret && querySecret && timingSafeCompare(querySecret, config.secret));
       const upgraded = srv.upgrade(request, {
         data: {
           authenticated: authed,
@@ -1199,7 +667,7 @@ const server = Bun.serve({
               }
             }
             // Slow path: CLI spawn
-            const env = zellijEnv(session);
+            const env = zellijEnv(session, config);
             const proc = Bun.spawn(["zellij", "action", action, ...args], {
               stdout: "pipe",
               stderr: "pipe",
@@ -1311,13 +779,13 @@ async function handleRequest(request: Request, url: URL): Promise<Response> {
           zellijLastRecoveryAttempt: zellijLastRecoveryAttempt || null,
         },
       };
-      broadcastSSE("alert", summary);
+      broadcastSSE("alert", summary, metrics);
       metrics.alertsReceived++;
       console.log(`[bridge] alert webhook: status=${status} count=${alerts.length}`);
       return json({ ok: true, broadcast: true });
     }
 
-    if (!isAuthorized(request) && request.method !== "GET") {
+    if (!isAuthorized(request, config) && request.method !== "GET") {
       return json({ ok: false, error: "unauthorized" }, { status: 401, headers: CORS_HEADERS });
     }
 
@@ -1329,17 +797,17 @@ async function handleRequest(request: Request, url: URL): Promise<Response> {
     if (request.method === "GET" && url.pathname === "/events") {
       server.timeout(request, 0);
       const lastEventId = request.headers.get("Last-Event-ID");
-      const clientId = ++sseClientSeq;
+      const clientId = incrementSseClientSeq();
       const stream = new ReadableStream({
         start(controller) {
           sseClients.set(clientId, { controller, buffered: 0, connectedAt: Date.now() });
           metrics.sseClientConnected++;
           // Notify other clients about new connection
-          broadcastSSE("client_connected", { clientId, totalClients: sseClients.size });
+          broadcastSSE("client_connected", { clientId, totalClients: sseClients.size }, metrics);
           // Send full snapshot on connect so new clients have current state
           const snapshot = registry.list();
           try {
-            controller.enqueue(formatSSE({ ...snapshot, _clientId: clientId }, "snapshot", ++sseEventSeq));
+            controller.enqueue(formatSSE({ ...snapshot, _clientId: clientId }, "snapshot", incrementSseEventSeq()));
           } catch {
             sseClients.delete(clientId);
             return;
@@ -1356,7 +824,7 @@ async function handleRequest(request: Request, url: URL): Promise<Response> {
                 metrics.sseReplaySuccesses++;
                 // Found the event — replay everything after it (skip ephemeral client events)
                 for (const entry of sseEventLog.slice(replayIndex + 1)) {
-                  if (entry.event === "client_connected" || entry.event === "client_disconnected") continue;
+                  if (entry.event === "client_connected" || entry.event === "client_disconnected" || entry.event === "snapshot") continue;
                   try {
                     controller.enqueue(formatSSE(entry.payload, entry.event, entry.id));
                   } catch {
@@ -1376,7 +844,7 @@ async function handleRequest(request: Request, url: URL): Promise<Response> {
                     gapEnd,
                     gapSize,
                     suggestion: `replay unavailable for events ${gapStart}-${gapEnd} — use /events/log?after_seq=${gapStart} for persistent log catch-up`,
-                  }, "gap", ++sseEventSeq));
+                  }, "gap", incrementSseEventSeq()));
                 } catch {
                   sseClients.delete(clientId);
                   return;
@@ -1402,7 +870,7 @@ async function handleRequest(request: Request, url: URL): Promise<Response> {
             }
             sseClients.delete(clientId);
             metrics.sseClientDisconnected++;
-            broadcastSSE("client_disconnected", { clientId, totalClients: sseClients.size });
+            broadcastSSE("client_disconnected", { clientId, totalClients: sseClients.size }, metrics);
             try {
               controller.close();
             } catch {}
@@ -1647,7 +1115,7 @@ setInterval(()=>{fetch("/status").then(r=>r.json()).then(d=>{
     }
 
     if (request.method === "POST" && url.pathname === "/debug/gc") {
-      if (!isAuthorized(request)) {
+      if (!isAuthorized(request, config)) {
         return json({ ok: false, error: "authentication required" }, { status: 401 });
       }
       const before = process.memoryUsage();
@@ -1678,7 +1146,7 @@ setInterval(()=>{fetch("/status").then(r=>r.json()).then(d=>{
 
     // POST /recover — manually trigger zellij session recovery
     if (request.method === "POST" && url.pathname === "/recover") {
-      if (!isAuthorized(request)) {
+      if (!isAuthorized(request, config)) {
         return json({ ok: false, error: "authentication required" }, { status: 401 });
       }
       const session = url.searchParams.get("session") || config.zellijSessionName || "main";
@@ -1696,7 +1164,7 @@ setInterval(()=>{fetch("/status").then(r=>r.json()).then(d=>{
     }
 
     if (request.method === "GET" && url.pathname === "/debug/heap-snapshot") {
-      if (!isAuthorized(request)) {
+      if (!isAuthorized(request, config)) {
         return json({ ok: false, error: "authentication required" }, { status: 401 });
       }
       try {
@@ -1711,7 +1179,7 @@ setInterval(()=>{fetch("/status").then(r=>r.json()).then(d=>{
     }
 
     if (request.method === "POST" && url.pathname === "/debug/reload") {
-      if (!isAuthorized(request)) {
+      if (!isAuthorized(request, config)) {
         return json({ ok: false, error: "authentication required" }, { status: 401 });
       }
       try {
@@ -1726,7 +1194,7 @@ setInterval(()=>{fetch("/status").then(r=>r.json()).then(d=>{
     }
 
     if (request.method === "GET" && url.pathname === "/diagnostics") {
-      if (!isAuthorized(request)) {
+      if (!isAuthorized(request, config)) {
         return json({ ok: false, error: "authentication required" }, { status: 401 });
       }
       const diag: Record<string, unknown> = {
@@ -1750,7 +1218,7 @@ setInterval(()=>{fetch("/status").then(r=>r.json()).then(d=>{
       try {
         const pipeProc = Bun.spawn(["pgrep", "-af", "zellij pipe"], {
           stdout: "pipe", stderr: "pipe",
-          env: zellijEnv(),
+          env: zellijEnv(undefined, config),
         });
         const pipeOutput = await new Response(pipeProc.stdout).text();
         const pipeExit = await pipeProc.exited;
@@ -1866,7 +1334,17 @@ setInterval(()=>{fetch("/status").then(r=>r.json()).then(d=>{
       // Bun heap stats from bun:jsc (production memory monitoring)
       let heapStats: Record<string, unknown> | null = cachedHeapStats;
       // Build Prometheus exposition format for /metrics endpoint reuse
-      const prometheusLines = buildPrometheusMetrics();
+      const prometheusLines = buildPrometheusMetrics({
+        sseClientsSize: sseClients.size,
+        sseEventLogLength: sseEventLog.length,
+        sessionsCount: registry.list().length,
+        dedupCountsSize: dedupCounts.size,
+        registryList: () => registry.list(),
+        cachedHeapStats,
+        serverPendingRequests: server.pendingRequests,
+        serverPendingWebSockets: server.pendingWebSockets,
+        version: BRIDGE_VERSION,
+      });
       return json({
         ok: true,
         uptime: process.uptime(),
@@ -1909,7 +1387,17 @@ setInterval(()=>{fetch("/status").then(r=>r.json()).then(d=>{
     }
 
     if (request.method === "GET" && url.pathname === "/metrics") {
-      return new Response(buildPrometheusMetrics(), {
+      return new Response(buildPrometheusMetrics({
+        sseClientsSize: sseClients.size,
+        sseEventLogLength: sseEventLog.length,
+        sessionsCount: registry.list().length,
+        dedupCountsSize: dedupCounts.size,
+        registryList: () => registry.list(),
+        cachedHeapStats,
+        serverPendingRequests: server.pendingRequests,
+        serverPendingWebSockets: server.pendingWebSockets,
+        version: BRIDGE_VERSION,
+      }), {
         headers: {
           "content-type": "text/plain; version=0.0.4; charset=utf-8",
           ...CORS_HEADERS,
@@ -1936,7 +1424,17 @@ setInterval(()=>{fetch("/status").then(r=>r.json()).then(d=>{
     if (request.method === "GET" && url.pathname === "/metrics/combined") {
       // Merge bridge + caddy metrics into single Prometheus scrape target
       try {
-        const bridgeMetrics = buildPrometheusMetrics();
+        const bridgeMetrics = buildPrometheusMetrics({
+        sseClientsSize: sseClients.size,
+        sseEventLogLength: sseEventLog.length,
+        sessionsCount: registry.list().length,
+        dedupCountsSize: dedupCounts.size,
+        registryList: () => registry.list(),
+        cachedHeapStats,
+        serverPendingRequests: server.pendingRequests,
+        serverPendingWebSockets: server.pendingWebSockets,
+        version: BRIDGE_VERSION,
+      });
         let caddyMetrics = "";
         try {
           const caddyResp = await fetch("http://127.0.0.1:2019/metrics", { signal: AbortSignal.timeout(3000) });
@@ -2187,7 +1685,7 @@ setInterval(()=>{fetch("/status").then(r=>r.json()).then(d=>{
     }
 
     if (request.method === "POST" && url.pathname === "/events/log/compact") {
-      if (!isAuthorized(request)) {
+      if (!isAuthorized(request, config)) {
         return json({ ok: false, error: "authentication required" }, { status: 401 });
       }
       try {
@@ -2251,12 +1749,12 @@ setInterval(()=>{fetch("/status").then(r=>r.json()).then(d=>{
       try {
         body = JSON.parse(rawBody) as ClaudeBridgeEvent;
       } catch {
-        await appendIgnoredEvent("claude-hook", "invalid json", { rawBody });
+        await appendIgnoredEvent("claude-hook", "invalid json", { rawBody }, config, metrics);
         return json({ ok: false, error: "invalid json" }, { status: 400 });
       }
 
       if (!body || (typeof body.event_name !== "string" || body.event_name.trim() === "") && (typeof body.hook_event_name !== "string" || body.hook_event_name.trim() === "")) {
-        await appendIgnoredEvent("claude-hook", "missing event_name", { rawEvent: body ?? null });
+        await appendIgnoredEvent("claude-hook", "missing event_name", { rawEvent: body ?? null }, config, metrics);
         return json({ ok: false, error: "missing event_name" }, { status: 400 });
       }
 
@@ -2291,7 +1789,7 @@ setInterval(()=>{fetch("/status").then(r=>r.json()).then(d=>{
       const signal = normalizeClaudeEvent(event);
 
       if (!signal) {
-        await appendIgnoredEvent("claude-hook", "event did not map to an office state", { rawEvent: event });
+        await appendIgnoredEvent("claude-hook", "event did not map to an office state", { rawEvent: event }, config, metrics);
         return json({
           ok: true,
           ignored: true,
@@ -2351,7 +1849,7 @@ setInterval(()=>{fetch("/status").then(r=>r.json()).then(d=>{
           results.push({ index: i, ok: true, ignored: true, reason: "duplicate signal" });
         } else {
           metrics.signalsProcessed++;
-          broadcastSSE("signal", resolvedSignal);
+          broadcastSSE("signal", resolvedSignal, metrics);
           results.push({ index: i, ok: true });
         }
       }
@@ -2381,12 +1879,12 @@ setInterval(()=>{fetch("/status").then(r=>r.json()).then(d=>{
     }
 
     if (request.method === "POST" && url.pathname === "/web/token/refresh") {
-      if (!isAuthorized(request)) {
+      if (!isAuthorized(request, config)) {
         return json({ ok: false, error: "authentication required" }, { status: 401 });
       }
       // Revoke old token first, then create new one — prevents stale token accumulation
       try {
-        const env = zellijEnv();
+        const env = zellijEnv(undefined, config);
 
         // Step 1: Revoke old token if we know its name
         const oldTokenName = config.zellijWebTokenName;
@@ -2450,7 +1948,7 @@ setInterval(()=>{fetch("/status").then(r=>r.json()).then(d=>{
           } catch (err) {
             console.warn("[bridge] failed to persist token to env file:", err);
           }
-          broadcastSSE("web_token_refreshed", { tokenSet: true, tokenName: newTokenName, timestamp: new Date().toISOString() });
+          broadcastSSE("web_token_refreshed", { tokenSet: true, tokenName: newTokenName, timestamp: new Date().toISOString() }, metrics);
           metrics.tokenRefreshes++;
         }
 
@@ -2487,7 +1985,7 @@ setInterval(()=>{fetch("/status").then(r=>r.json()).then(d=>{
     }
 
     if (request.method === "POST" && url.pathname === "/web/token/revoke") {
-      if (!isAuthorized(request)) {
+      if (!isAuthorized(request, config)) {
         return json({ ok: false, error: "authentication required" }, { status: 401 });
       }
       let body: { name?: string; revokeAll?: boolean };
@@ -2497,7 +1995,7 @@ setInterval(()=>{fetch("/status").then(r=>r.json()).then(d=>{
         return json({ ok: false, error: "invalid json" }, { status: 400 });
       }
       try {
-        const env = zellijEnv();
+        const env = zellijEnv(undefined, config);
         if (body.revokeAll) {
           // Revoke all tokens
           const proc = Bun.spawn(["zellij", "web", "--revoke-all-tokens"], {
@@ -2510,7 +2008,7 @@ setInterval(()=>{fetch("/status").then(r=>r.json()).then(d=>{
             return json({ ok: false, error: "revoke-all-tokens failed", exitCode, stderr: stderr.trim() || null }, { status: 502 });
           }
           (config as unknown as Record<string, unknown>).zellijWebToken = undefined;
-          broadcastSSE("web_token_revoked", { all: true, timestamp: new Date().toISOString() });
+          broadcastSSE("web_token_revoked", { all: true, timestamp: new Date().toISOString() }, metrics);
           metrics.tokenRevocations++;          return json({ ok: true, revokedAll: true, rawOutput: stdout.trim() || null });
         }
         // Revoke by token name (e.g., "token_5") — NOT the UUID
@@ -2534,7 +2032,7 @@ setInterval(()=>{fetch("/status").then(r=>r.json()).then(d=>{
           }, { status: 502 });
         }
 
-        broadcastSSE("web_token_revoked", { name: tokenName, timestamp: new Date().toISOString() });
+        broadcastSSE("web_token_revoked", { name: tokenName, timestamp: new Date().toISOString() }, metrics);
         metrics.tokenRevocations++;
         return json({
           ok: true,
@@ -2551,11 +2049,11 @@ setInterval(()=>{fetch("/status").then(r=>r.json()).then(d=>{
 
     if (request.method === "GET" && url.pathname === "/web/tokens") {
       // List token names and creation dates (no actual token values)
-      if (!isAuthorized(request)) {
+      if (!isAuthorized(request, config)) {
         return json({ ok: false, error: "authentication required" }, { status: 401 });
       }
       try {
-        const env = zellijEnv();
+        const env = zellijEnv(undefined, config);
         const proc = Bun.spawn(["zellij", "web", "--list-tokens"], {
           stdout: "pipe", stderr: "pipe", env,
         });
@@ -2580,7 +2078,7 @@ setInterval(()=>{fetch("/status").then(r=>r.json()).then(d=>{
     // Authenticated endpoint: returns the web token for bridge consumers
     // that need to open the Zellij web terminal programmatically
     if (request.method === "GET" && url.pathname === "/web/token") {
-      if (!isAuthorized(request)) {
+      if (!isAuthorized(request, config)) {
         return json({ ok: false, error: "authentication required" }, { status: 401 });
       }
       const webUrl = config.zellijWebUrl || null;
@@ -2642,7 +2140,7 @@ setInterval(()=>{fetch("/status").then(r=>r.json()).then(d=>{
     }
 
     if (request.method === "POST" && url.pathname === "/action") {
-      if (!isAuthorized(request)) {
+      if (!isAuthorized(request, config)) {
         return json({ ok: false, error: "action endpoint requires authentication" }, { status: 401 });
       }
 
@@ -2680,7 +2178,7 @@ setInterval(()=>{fetch("/status").then(r=>r.json()).then(d=>{
             const resp = await fetch(localUrl, { signal: AbortSignal.timeout(3000) });
             if (resp.ok) {
               stdout = await resp.text();
-              broadcastSSE("action_executed", { action: body.action, args, session, exitCode: 0, via: "http" });
+              broadcastSSE("action_executed", { action: body.action, args, session, exitCode: 0, via: "http" }, metrics);
               metrics.actionsExecuted++;
               metrics.ipcActions.set("web --status", (metrics.ipcActions.get("web --status") || 0) + 1);
               return json({
@@ -2698,7 +2196,7 @@ setInterval(()=>{fetch("/status").then(r=>r.json()).then(d=>{
           }
         }
 
-        const env = zellijEnv(session);
+        const env = zellijEnv(session, config);
 
         if (IPC_ELIGIBLE.has(body.action) && metrics.zellijSessionHealthy === 1) {
           // Fast path: direct UDS+protobuf IPC (avg 13ms vs 48ms CLI)
@@ -2721,7 +2219,7 @@ setInterval(()=>{fetch("/status").then(r=>r.json()).then(d=>{
               try { parsed = JSON.parse(parsed); } catch { /* keep as string */ }
             }
 
-            broadcastSSE("action_executed", { action: body.action, args, session, exitCode: 0, via: "ipc" });
+            broadcastSSE("action_executed", { action: body.action, args, session, exitCode: 0, via: "ipc" }, metrics);
             metrics.actionsExecuted++;
             metrics.ipcActions.set(body.action, (metrics.ipcActions.get(body.action) || 0) + 1);
 
@@ -2766,7 +2264,7 @@ setInterval(()=>{fetch("/status").then(r=>r.json()).then(d=>{
           try { parsed = JSON.parse(parsed); } catch { /* keep as string */ }
         }
 
-        broadcastSSE("action_executed", { action: body.action, args, session, exitCode });
+        broadcastSSE("action_executed", { action: body.action, args, session, exitCode }, metrics);
         metrics.actionsExecuted++;
         metrics.cliActions.set(body.action, (metrics.cliActions.get(body.action) || 0) + 1);
 
@@ -2789,7 +2287,7 @@ setInterval(()=>{fetch("/status").then(r=>r.json()).then(d=>{
     }
 
     if (request.method === "POST" && url.pathname === "/action/batch") {
-      if (!isAuthorized(request)) {
+      if (!isAuthorized(request, config)) {
         return json({ ok: false, error: "action endpoint requires authentication" }, { status: 401 });
       }
       let actions: { action: string; args?: string[]; session?: string }[];
@@ -2840,7 +2338,7 @@ setInterval(()=>{fetch("/status").then(r=>r.json()).then(d=>{
             }
           }
           // Slow path: CLI spawn (fallback for IPC failures and non-eligible actions)
-          const env = zellijEnv(session);
+          const env = zellijEnv(session, config);
           const cmd = ["zellij", "action", action, ...args];
           const proc = Bun.spawn(cmd, { env, stdout: "pipe", stderr: "pipe" });
           const stdout = await new Response(proc.stdout).text();
@@ -2860,7 +2358,7 @@ setInterval(()=>{fetch("/status").then(r=>r.json()).then(d=>{
       const batchResults = await Promise.all(batchPromises);
       results.push(...batchResults);
       const okCount = results.filter(r => r.ok).length;
-      broadcastSSE("action_batch_executed", { total: actions.length, ok: okCount, failed: actions.length - okCount });
+      broadcastSSE("action_batch_executed", { total: actions.length, ok: okCount, failed: actions.length - okCount }, metrics);
       return json({ ok: okCount === actions.length, total: actions.length, okCount, results });
     }
 
@@ -2895,7 +2393,7 @@ setInterval(()=>{fetch("/status").then(r=>r.json()).then(d=>{
         detail: body.detail || body.state,
         eventName: "ManualEvent",
         shouldLeave: body.shouldLeave,
-        context: {},
+        context: { manualState: body.state, manualDetail: body.detail || body.state },
       };
 
       return processSignal(signal, "manual");

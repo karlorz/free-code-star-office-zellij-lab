@@ -66,6 +66,8 @@ export interface SignalContext {
   controlPlaneTimestamp?: string;
   controlPlanePermissionUpdatesCount?: number;
   permissionSuggestionsCount?: number;
+  manualState?: string;
+  manualDetail?: string;
   stopHookActive?: boolean;
   zellijEvent?: string;
   zellijPaneCount?: number;
