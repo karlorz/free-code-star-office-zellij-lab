@@ -17,6 +17,7 @@ export function mapZellijEvent(body: Record<string, unknown>): NormalizedSignal 
 
   let state: NormalizedSignal["state"];
   let detail: string;
+  let shouldLeave = false;
   switch (zellijEvent) {
     case "pane_update":
       state = "syncing";
@@ -41,6 +42,7 @@ export function mapZellijEvent(body: Record<string, unknown>): NormalizedSignal 
     case "pane_exit":
       state = "idle";
       detail = `pane_exit: exit=${body.exit_status ?? "?"} held=${body.is_held ?? "?"}`;
+      shouldLeave = true;
       break;
     case "client_update":
       state = "syncing";
@@ -57,12 +59,12 @@ export function mapZellijEvent(body: Record<string, unknown>): NormalizedSignal 
 
   return {
     sessionId,
-    agentName: "main",
-    scope: "main",
+    agentName: "Zellij",
+    scope: "subagent",
     state,
     detail,
     eventName: typeof body.hook_event_name === "string" ? body.hook_event_name : "ZellijEvent",
-    shouldLeave: false,
+    shouldLeave,
     context: {
       cwd,
       zellijEvent,
