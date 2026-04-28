@@ -786,7 +786,8 @@ async function handleRequest(request: Request, url: URL): Promise<Response> {
       return json({ ok: true, broadcast: true });
     }
 
-    if (!isAuthorized(request, config) && request.method !== "GET") {
+    if (!isAuthorized(request, config) && request.method !== "GET"
+        && url.pathname !== "/hook/zellij" && url.pathname !== "/hook/zellij/batch") {
       return json({ ok: false, error: "unauthorized" }, { status: 401, headers: CORS_HEADERS });
     }
 
@@ -2259,8 +2260,8 @@ async function handleRequest(request: Request, url: URL): Promise<Response> {
 // Route table for /help endpoint
 const ROUTE_TABLE: { method: string; path: string; description: string; auth: boolean }[] = [
   { method: "POST", path: "/hook/claude", description: "Receive Claude hook events", auth: true },
-  { method: "POST", path: "/hook/zellij", description: "Receive Zellij monitor events", auth: true },
-  { method: "POST", path: "/hook/zellij/batch", description: "Batch Zellij events (JSON array)", auth: true },
+  { method: "POST", path: "/hook/zellij", description: "Receive Zellij monitor events", auth: false },
+  { method: "POST", path: "/hook/zellij/batch", description: "Batch Zellij events (JSON array)", auth: false },
   { method: "GET", path: "/events", description: "SSE stream for real-time subscription", auth: false },
   { method: "GET", path: "/events/recent", description: "Recent event log (sequential IDs)", auth: false },
   { method: "GET", path: "/events/log", description: "Persistent event history (supports after_seq for catch-up, reads rotated logs)", auth: false },
