@@ -21,19 +21,19 @@ bot.karldigi.dev {
 	}
 }
 
-star.karldigi.dev {
-	# /office/ prefix: strip and proxy to Flask (same as bridge iframe context)
+(office_proxy) {
 	@office path /office /office/*
 	handle @office {
 		uri strip_prefix /office
 		reverse_proxy 127.0.0.1:19000
 	}
+}
 
-	# Everything else: direct proxy
+star.karldigi.dev {
+	import office_proxy
 	handle {
 		reverse_proxy 127.0.0.1:19000
 	}
-
 	log {
 		output stderr
 		format console
@@ -41,7 +41,6 @@ star.karldigi.dev {
 }
 
 bridge.karldigi.dev {
-	# SSE streams: no encoding (avoid buffering delay)
 	@sse path /events /events/*
 	handle @sse {
 		reverse_proxy 127.0.0.1:4317 {
@@ -54,15 +53,8 @@ bridge.karldigi.dev {
 		}
 	}
 
-	# Star Office iframe — same-origin proxy to avoid mixed-content blocking
-	# All /office/* requests are stripped of the /office prefix and proxied to Flask
-	@office path /office /office/*
-	handle @office {
-		uri strip_prefix /office
-		reverse_proxy 127.0.0.1:19000
-	}
+	import office_proxy
 
-	# Everything else: gzip + standard proxy
 	handle {
 		encode gzip
 		reverse_proxy 127.0.0.1:4317 {

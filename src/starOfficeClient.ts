@@ -1,4 +1,4 @@
-import type { BridgeConfig, NormalizedSignal } from "./types";
+import type { BridgeConfig, NormalizedSignal, OfficeState } from "./types";
 
 function parseJsonSafely(text: string): unknown {
   try {
@@ -20,8 +20,16 @@ export class StarOfficeClient {
     this.dryRun = config.dryRun;
   }
 
+  private get effectiveJoinKey(): string {
+    return this.joinKey || "dry-run-join-key";
+  }
+
   private sessionAgentKey(signal: NormalizedSignal): string {
     return `${signal.sessionId}:${signal.agentName}`;
+  }
+
+  private setMainState(state: OfficeState, detail: string): Promise<unknown> {
+    return this.post("/set_state", { state, detail });
   }
 
   private async post(path: string, body: Record<string, unknown>): Promise<unknown> {
@@ -110,7 +118,7 @@ export class StarOfficeClient {
 
     const joinResponse = await this.post("/join-agent", {
       name: signal.agentName,
-      joinKey: this.joinKey || "dry-run-join-key",
+      joinKey: this.effectiveJoinKey,
       state: signal.state,
       detail: signal.detail,
     });
@@ -132,25 +140,22 @@ export class StarOfficeClient {
       });
       this.agentIds.delete(key);
       if (signal.scope === "main") {
-        await this.post("/set_state", { state: "idle", detail: "" });
+        await this.setMainState("idle", "");
       }
       return result;
     }
 
     const agentId = await this.ensureJoined(signal);
-    const pushResult = this.post("/agent-push", {
+    const pushResult = await this.post("/agent-push", {
       agentId,
-      joinKey: this.joinKey || "dry-run-join-key",
+      joinKey: this.effectiveJoinKey,
       state: signal.state,
       detail: signal.detail,
       name: signal.agentName,
     });
 
     if (signal.scope === "main") {
-      await this.post("/set_state", {
-        state: signal.state,
-        detail: signal.detail,
-      });
+      await this.setMainState(signal.state, signal.detail);
     }
 
     return pushResult;
