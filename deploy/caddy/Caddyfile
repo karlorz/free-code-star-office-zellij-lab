@@ -49,13 +49,10 @@ bridge.karldigi.dev {
 	handle {
 		encode gzip
 		reverse_proxy 127.0.0.1:4317 {
-			health_uri /readyz
-			health_interval 10s
+			health_uri /health
+			health_interval 30s
 			health_timeout 5s
 			health_status 200
-			fail_duration 30s
-			max_fails 3
-			unhealthy_status 5xx
 			flush_interval -1
 			stream_timeout 24h
 			stream_close_delay 5m
