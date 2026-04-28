@@ -72,9 +72,17 @@ body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
 
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
 
-/* Main layout */
-.main{flex:1;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr auto;gap:0;overflow:hidden}
-@media(max-width:900px){.main{grid-template-columns:1fr;grid-template-rows:1fr 1fr auto}}
+/* Main layout — 3-col: pixel office | sessions | activity */
+.main{flex:1;display:grid;grid-template-columns:1.1fr .9fr 1fr;grid-template-rows:1fr auto;gap:0;overflow:hidden}
+@media(max-width:1200px){.main{grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr auto}}
+@media(max-width:900px){.main{grid-template-columns:1fr;grid-template-rows:1fr 1fr 1fr auto}}
+
+/* Pixel office iframe */
+.office-frame{width:100%;height:100%;border:none;background:var(--bg)}
+.office-fallback{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;color:var(--text4);gap:10px;padding:30px}
+.office-fallback .icon{font-size:40px;opacity:.3}
+.office-fallback .msg{font-size:13px;font-weight:500;color:var(--text3)}
+.office-fallback .hint{font-size:11px;color:var(--text4);opacity:.6}
 
 /* Panels */
 .panel{display:flex;flex-direction:column;overflow:hidden}
@@ -182,7 +190,24 @@ body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
 
 <!-- Main content -->
 <div class="main">
-  <!-- Left: Sessions -->
+  <!-- Left: Pixel Office iframe -->
+  <div class="panel panel-left">
+    <div class="panel-header">
+      <span class="panel-title">Office</span>
+      <span class="panel-count" id="officeStatus" style="background:rgba(16,185,129,.15);color:#6ee7b7">--</span>
+    </div>
+    <div class="panel-body" id="officeContainer" style="padding:0">
+      ${config.starOfficeUrl
+        ? `<iframe class="office-frame" id="officeFrame" src="${config.starOfficeUrl.replace(/\/$/, "")}" allow="clipboard-write" loading="eager"></iframe>`
+        : `<div class="office-fallback">
+            <div class="icon">\u2726</div>
+            <div class="msg">Star Office not connected</div>
+            <div class="hint">Set STAR_OFFICE_URL to embed the pixel office here</div>
+          </div>`}
+    </div>
+  </div>
+
+  <!-- Center: Sessions -->
   <div class="panel panel-left">
     <div class="panel-header">
       <span class="panel-title">Sessions</span>
@@ -218,6 +243,7 @@ body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
   <button class="toolbar-btn" onclick="injectEvent()">Inject</button>
   <div class="toolbar-spacer"></div>
   <a class="toolbar-link" href="/health" target="_blank">Health</a>
+  ${config.starOfficeUrl ? `<a class="toolbar-link" href="${config.starOfficeUrl.replace(/\/$/, "")}" target="_blank">Office</a>` : ''}
   <a class="toolbar-link" href="/snapshot" target="_blank">Snapshot</a>
   <a class="toolbar-link" href="/metrics" target="_blank">Metrics</a>
   <a class="toolbar-link" href="/help" target="_blank">API</a>
@@ -228,11 +254,21 @@ body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
 
 <script>
 const SECRET = ${secret ? `"${secret}"` : "null"};
+const OFFICE_URL = ${config.starOfficeUrl ? `"${config.starOfficeUrl.replace(/\/$/, "")}"` : "null"};
 let ws = null;
 let feedCount = 0;
 const sessions = new Map();
 const MAX_FEED = 300;
 let sessionsRendered = false;
+
+// --- Office iframe health ---
+if (OFFICE_URL) {
+  const badge = document.getElementById("officeStatus");
+  const check = () => fetch(OFFICE_URL + "/health", { mode: "no-cors" })
+    .then(() => { badge.textContent = "live"; badge.style.background = "rgba(16,185,129,.15)"; badge.style.color = "#6ee7b7"; })
+    .catch(() => { badge.textContent = "down"; badge.style.background = "rgba(239,68,68,.15)"; badge.style.color = "#fca5a5"; });
+  check(); setInterval(check, 30000);
+}
 
 // --- SSE ---
 const es = new EventSource("/events");
