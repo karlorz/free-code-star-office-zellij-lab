@@ -23,12 +23,7 @@ bot.karldigi.dev {
 
 star.karldigi.dev {
 	encode gzip
-	reverse_proxy 127.0.0.1:19000 {
-		health_uri /health
-		health_interval 10s
-		health_timeout 5s
-		health_status 200
-	}
+	reverse_proxy 127.0.0.1:19000
 
 	log {
 		output stderr

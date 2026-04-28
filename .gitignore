@@ -4,3 +4,4 @@ tmp
 dist
 .claude/scheduled_tasks.lock
 chroma.log
+.mcp.json
