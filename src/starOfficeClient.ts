@@ -105,7 +105,7 @@ export class StarOfficeClient {
     }
 
     if (!this.joinKey && !this.dryRun) {
-      throw new Error("STAR_OFFICE_JOIN_KEY is required for subagent sync");
+      throw new Error("STAR_OFFICE_JOIN_KEY is required for agent join");
     }
 
     const joinResponse = await this.post("/join-agent", {
@@ -122,13 +122,6 @@ export class StarOfficeClient {
   }
 
   async apply(signal: NormalizedSignal): Promise<unknown> {
-    if (signal.scope === "main") {
-      return this.post("/set_state", {
-        state: signal.state,
-        detail: signal.detail,
-      });
-    }
-
     const key = this.sessionAgentKey(signal);
 
     if (signal.shouldLeave) {
@@ -138,16 +131,28 @@ export class StarOfficeClient {
         name: signal.agentName,
       });
       this.agentIds.delete(key);
+      if (signal.scope === "main") {
+        await this.post("/set_state", { state: "idle", detail: "" });
+      }
       return result;
     }
 
     const agentId = await this.ensureJoined(signal);
-    return this.post("/agent-push", {
+    const pushResult = this.post("/agent-push", {
       agentId,
       joinKey: this.joinKey || "dry-run-join-key",
       state: signal.state,
       detail: signal.detail,
       name: signal.agentName,
     });
+
+    if (signal.scope === "main") {
+      await this.post("/set_state", {
+        state: signal.state,
+        detail: signal.detail,
+      });
+    }
+
+    return pushResult;
   }
 }

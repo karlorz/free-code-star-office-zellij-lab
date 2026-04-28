@@ -22,7 +22,17 @@ bot.karldigi.dev {
 }
 
 star.karldigi.dev {
-	reverse_proxy 127.0.0.1:19000
+	# /office/ prefix: strip and proxy to Flask (same as bridge iframe context)
+	@office path /office /office/*
+	handle @office {
+		uri strip_prefix /office
+		reverse_proxy 127.0.0.1:19000
+	}
+
+	# Everything else: direct proxy
+	handle {
+		reverse_proxy 127.0.0.1:19000
+	}
 
 	log {
 		output stderr

@@ -2,99 +2,134 @@
   "hooks": {
     "PreToolUse": [
       {
-        "type": "http",
-        "url": "${CLAUDE_STAR_BRIDGE_URL}/hook/claude",
-        "timeout": 10,
-        "headers": {
-          "X-Bridge-Secret": "${CLAUDE_STAR_BRIDGE_SECRET}"
-        },
-        "allowedEnvVars": [
-          "CLAUDE_STAR_BRIDGE_URL",
-          "CLAUDE_STAR_BRIDGE_SECRET"
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "http",
+            "url": "http://127.0.0.1:4317/hook/claude",
+            "timeout": 10,
+            "headers": {
+              "X-Bridge-Secret": "${CLAUDE_STAR_BRIDGE_SECRET}"
+            },
+            "allowedEnvVars": [
+              "CLAUDE_STAR_BRIDGE_URL",
+              "CLAUDE_STAR_BRIDGE_SECRET"
+            ]
+          }
         ]
       }
     ],
     "PostToolUse": [
       {
-        "type": "http",
-        "url": "${CLAUDE_STAR_BRIDGE_URL}/hook/claude",
-        "timeout": 10,
-        "headers": {
-          "X-Bridge-Secret": "${CLAUDE_STAR_BRIDGE_SECRET}"
-        },
-        "allowedEnvVars": [
-          "CLAUDE_STAR_BRIDGE_URL",
-          "CLAUDE_STAR_BRIDGE_SECRET"
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "http",
+            "url": "http://127.0.0.1:4317/hook/claude",
+            "timeout": 10,
+            "headers": {
+              "X-Bridge-Secret": "${CLAUDE_STAR_BRIDGE_SECRET}"
+            },
+            "allowedEnvVars": [
+              "CLAUDE_STAR_BRIDGE_URL",
+              "CLAUDE_STAR_BRIDGE_SECRET"
+            ]
+          }
         ]
       }
     ],
     "Notification": [
       {
-        "type": "http",
-        "url": "${CLAUDE_STAR_BRIDGE_URL}/hook/claude",
-        "timeout": 10,
-        "headers": {
-          "X-Bridge-Secret": "${CLAUDE_STAR_BRIDGE_SECRET}"
-        },
-        "allowedEnvVars": [
-          "CLAUDE_STAR_BRIDGE_URL",
-          "CLAUDE_STAR_BRIDGE_SECRET"
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "http",
+            "url": "http://127.0.0.1:4317/hook/claude",
+            "timeout": 10,
+            "headers": {
+              "X-Bridge-Secret": "${CLAUDE_STAR_BRIDGE_SECRET}"
+            },
+            "allowedEnvVars": [
+              "CLAUDE_STAR_BRIDGE_URL",
+              "CLAUDE_STAR_BRIDGE_SECRET"
+            ]
+          }
         ]
       }
     ],
     "Stop": [
       {
-        "type": "http",
-        "url": "${CLAUDE_STAR_BRIDGE_URL}/hook/claude",
-        "timeout": 10,
-        "headers": {
-          "X-Bridge-Secret": "${CLAUDE_STAR_BRIDGE_SECRET}"
-        },
-        "allowedEnvVars": [
-          "CLAUDE_STAR_BRIDGE_URL",
-          "CLAUDE_STAR_BRIDGE_SECRET"
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "http",
+            "url": "http://127.0.0.1:4317/hook/claude",
+            "timeout": 10,
+            "headers": {
+              "X-Bridge-Secret": "${CLAUDE_STAR_BRIDGE_SECRET}"
+            },
+            "allowedEnvVars": [
+              "CLAUDE_STAR_BRIDGE_URL",
+              "CLAUDE_STAR_BRIDGE_SECRET"
+            ]
+          }
         ]
       }
     ],
     "SubagentStart": [
       {
-        "type": "http",
-        "url": "${CLAUDE_STAR_BRIDGE_URL}/hook/claude",
-        "timeout": 10,
-        "headers": {
-          "X-Bridge-Secret": "${CLAUDE_STAR_BRIDGE_SECRET}"
-        },
-        "allowedEnvVars": [
-          "CLAUDE_STAR_BRIDGE_URL",
-          "CLAUDE_STAR_BRIDGE_SECRET"
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "http",
+            "url": "http://127.0.0.1:4317/hook/claude",
+            "timeout": 10,
+            "headers": {
+              "X-Bridge-Secret": "${CLAUDE_STAR_BRIDGE_SECRET}"
+            },
+            "allowedEnvVars": [
+              "CLAUDE_STAR_BRIDGE_URL",
+              "CLAUDE_STAR_BRIDGE_SECRET"
+            ]
+          }
         ]
       }
     ],
     "SubagentStop": [
       {
-        "type": "http",
-        "url": "${CLAUDE_STAR_BRIDGE_URL}/hook/claude",
-        "timeout": 10,
-        "headers": {
-          "X-Bridge-Secret": "${CLAUDE_STAR_BRIDGE_SECRET}"
-        },
-        "allowedEnvVars": [
-          "CLAUDE_STAR_BRIDGE_URL",
-          "CLAUDE_STAR_BRIDGE_SECRET"
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "http",
+            "url": "http://127.0.0.1:4317/hook/claude",
+            "timeout": 10,
+            "headers": {
+              "X-Bridge-Secret": "${CLAUDE_STAR_BRIDGE_SECRET}"
+            },
+            "allowedEnvVars": [
+              "CLAUDE_STAR_BRIDGE_URL",
+              "CLAUDE_STAR_BRIDGE_SECRET"
+            ]
+          }
         ]
       }
     ],
     "UserPromptSubmit": [
       {
-        "type": "http",
-        "url": "${CLAUDE_STAR_BRIDGE_URL}/hook/claude",
-        "timeout": 10,
-        "headers": {
-          "X-Bridge-Secret": "${CLAUDE_STAR_BRIDGE_SECRET}"
-        },
-        "allowedEnvVars": [
-          "CLAUDE_STAR_BRIDGE_URL",
-          "CLAUDE_STAR_BRIDGE_SECRET"
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "http",
+            "url": "http://127.0.0.1:4317/hook/claude",
+            "timeout": 10,
+            "headers": {
+              "X-Bridge-Secret": "${CLAUDE_STAR_BRIDGE_SECRET}"
+            },
+            "allowedEnvVars": [
+              "CLAUDE_STAR_BRIDGE_URL",
+              "CLAUDE_STAR_BRIDGE_SECRET"
+            ]
+          }
         ]
       }
     ]
