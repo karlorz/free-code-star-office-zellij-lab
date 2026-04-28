@@ -21,6 +21,21 @@ bot.karldigi.dev {
 	}
 }
 
+star.karldigi.dev {
+	encode gzip
+	reverse_proxy 127.0.0.1:19000 {
+		health_uri /health
+		health_interval 10s
+		health_timeout 5s
+		health_status 200
+	}
+
+	log {
+		output stderr
+		format console
+	}
+}
+
 bridge.karldigi.dev {
 	# SSE streams: no encoding (avoid buffering delay)
 	@sse path /events /events/*

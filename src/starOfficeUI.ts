@@ -197,8 +197,8 @@ body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
       <span class="panel-count" id="officeStatus" style="background:rgba(16,185,129,.15);color:#6ee7b7">--</span>
     </div>
     <div class="panel-body" id="officeContainer" style="padding:0">
-      ${config.starOfficeUrl
-        ? `<iframe class="office-frame" id="officeFrame" src="${config.starOfficeUrl.replace(/\/$/, "")}" allow="clipboard-write" loading="eager"></iframe>`
+      ${config.starOfficeUrl || config.starOfficePublicUrl
+        ? `<iframe class="office-frame" id="officeFrame" src="${(config.starOfficePublicUrl || config.starOfficeUrl || "").replace(/\/$/, "")}" allow="clipboard-write" loading="eager"></iframe>`
         : `<div class="office-fallback">
             <div class="icon">\u2726</div>
             <div class="msg">Star Office not connected</div>
@@ -243,7 +243,7 @@ body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
   <button class="toolbar-btn" onclick="injectEvent()">Inject</button>
   <div class="toolbar-spacer"></div>
   <a class="toolbar-link" href="/health" target="_blank">Health</a>
-  ${config.starOfficeUrl ? `<a class="toolbar-link" href="${config.starOfficeUrl.replace(/\/$/, "")}" target="_blank">Office</a>` : ''}
+  ${(config.starOfficePublicUrl || config.starOfficeUrl) ? `<a class="toolbar-link" href="${(config.starOfficePublicUrl || config.starOfficeUrl || "").replace(/\/$/, "")}" target="_blank">Office</a>` : ''}
   <a class="toolbar-link" href="/snapshot" target="_blank">Snapshot</a>
   <a class="toolbar-link" href="/metrics" target="_blank">Metrics</a>
   <a class="toolbar-link" href="/help" target="_blank">API</a>
@@ -254,7 +254,7 @@ body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
 
 <script>
 const SECRET = ${secret ? `"${secret}"` : "null"};
-const OFFICE_URL = ${config.starOfficeUrl ? `"${config.starOfficeUrl.replace(/\/$/, "")}"` : "null"};
+const OFFICE_URL = ${(config.starOfficePublicUrl || config.starOfficeUrl) ? `"${(config.starOfficePublicUrl || config.starOfficeUrl || "").replace(/\/$/, "")}"` : "null"};
 let ws = null;
 let feedCount = 0;
 const sessions = new Map();

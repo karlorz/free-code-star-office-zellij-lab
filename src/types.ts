@@ -140,6 +140,7 @@ export interface BridgeConfig {
   eventsLogPath: string;
   starOfficeUrl?: string;
   starOfficeJoinKey?: string;
+  starOfficePublicUrl?: string;
   mainAgentName: string;
   zellijSessionName?: string;
   zellijWebUrl?: string;
