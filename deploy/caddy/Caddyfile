@@ -22,7 +22,6 @@ bot.karldigi.dev {
 }
 
 star.karldigi.dev {
-	encode gzip
 	reverse_proxy 127.0.0.1:19000
 
 	log {
@@ -43,6 +42,14 @@ bridge.karldigi.dev {
 				keepalive 30s
 			}
 		}
+	}
+
+	# Star Office iframe — same-origin proxy to avoid mixed-content blocking
+	# All /office/* requests are stripped of the /office prefix and proxied to Flask
+	@office path /office /office/*
+	handle @office {
+		uri strip_prefix /office
+		reverse_proxy 127.0.0.1:19000
 	}
 
 	# Everything else: gzip + standard proxy

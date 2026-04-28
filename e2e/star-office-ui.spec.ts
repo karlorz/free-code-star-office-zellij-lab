@@ -68,7 +68,7 @@ test.describe("Star Office Bridge — Dashboard UI", () => {
   test("Office iframe is present in dashboard", async ({ page }) => {
     const iframe = page.locator("#officeFrame");
     await expect(iframe).toBeAttached();
-    expect(await iframe.getAttribute("src")).toContain("star.karldigi.dev");
+    expect(await iframe.getAttribute("src")).toContain("/office/");
   });
 
   test("session list panel is visible", async ({ page }) => {
